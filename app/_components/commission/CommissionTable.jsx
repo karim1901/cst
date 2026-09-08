@@ -1,0 +1,381 @@
+"use client";
+
+import { useEffect, useState } from "react";
+
+import MonthSelect from "@/app/_components/orders/MonthSelect";
+import { Spinner, ErrorBanner } from "@/app/_components/orders/shared";
+import { periodFor } from "@/lib/tracking/counter";
+
+/**
+ * Monthly employee commission report — fetched from our own backend
+ * (`GET /api/commission`), which calculates everything server-side from
+ * MongoDB (see lib/commission/report.js). Never calls Ozon/Quick itself.
+ *
+ * Two presentations of the exact same `employees` data/state, toggled by
+ * breakpoint (Tailwind's `sm:`, ~640px) rather than two components with
+ * their own fetch/state: `EmployeeRows` (a `<table>`, `hidden` below `sm:`)
+ * for desktop, `EmployeeCard` (`sm:hidden`) for mobile. One source of
+ * truth — this file's own `useState`/`useEffect` above — only the JSX
+ * differs; neither reads/derives its numbers independently.
+ */
+
+const dateFormatter = new Intl.DateTimeFormat("en-GB", {
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+});
+
+const money = (value) => `${Number(value ?? 0).toLocaleString("en-US")} DH`;
+
+const PROVIDER_LABEL = {
+  ozon_express: "Ozon Express",
+  quick_livraison: "Quick Livraison",
+};
+
+/** "202608" -> "August 2026" — display only, shown on each mobile card so the selected month reads on its own without scrolling back up to the picker. */
+function periodLabel(period) {
+  const year = Number(period.slice(0, 4));
+  const monthIndex = Number(period.slice(4, 6)) - 1;
+  if (!Number.isFinite(year) || !Number.isFinite(monthIndex)) return period;
+  return new Date(year, monthIndex, 1).toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+  });
+}
+
+export default function CommissionTable({ emptyStateMessage = "No employees yet." }) {
+  const [period, setPeriod] = useState(() => periodFor());
+  const [state, setState] = useState("loading"); // loading | ready | error
+  const [errorMessage, setErrorMessage] = useState("");
+  const [employees, setEmployees] = useState([]);
+  const [expandedId, setExpandedId] = useState(null);
+
+  // Reset per-fetch state when the selected month changes — done here,
+  // during render (React's recommended "adjust state when a value changes"
+  // pattern), rather than as setState calls at the top of the effect below,
+  // same fix already applied to OzonOrdersList/QuickOrdersList.
+  const [renderedForPeriod, setRenderedForPeriod] = useState(period);
+  if (period !== renderedForPeriod) {
+    setRenderedForPeriod(period);
+    setState("loading");
+    setErrorMessage("");
+    setExpandedId(null);
+  }
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    fetch(`/api/commission?period=${encodeURIComponent(period)}`, {
+      signal: controller.signal,
+    })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data?.error || "Could not load the commission report.");
+        }
+        setEmployees(data.employees ?? []);
+        setState("ready");
+      })
+      .catch((error) => {
+        if (error?.name === "AbortError") return;
+        setErrorMessage(error?.message || "Could not load the commission report.");
+        setState("error");
+      });
+
+    return () => controller.abort();
+  }, [period]);
+
+  return (
+    <div>
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <MonthSelect value={period} onChange={setPeriod} disabled={state === "loading"} />
+        {state === "loading" ? (
+          <span className="inline-flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
+            <Spinner /> Loading…
+          </span>
+        ) : null}
+      </div>
+
+      {state === "error" ? <ErrorBanner>{errorMessage}</ErrorBanner> : null}
+
+      {state === "ready" && employees.length === 0 ? (
+        <p className="rounded-2xl border border-dashed border-zinc-300 px-6 py-10 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
+          {emptyStateMessage}
+        </p>
+      ) : null}
+
+      {employees.length > 0 ? (
+        <>
+          {/* Desktop / tablet — the existing table, scrollable inside its
+              own container (never the page) for anything narrower than its
+              min-width. Hidden (not just visually collapsed) below `sm:` so
+              it can never be a source of mobile overflow. */}
+          <div
+            className="hidden overflow-x-auto rounded-2xl border border-zinc-200 shadow-sm sm:block dark:border-zinc-800"
+            style={{ WebkitOverflowScrolling: "touch" }}
+          >
+            <table className="w-full min-w-160 text-left text-sm">
+              <thead className="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400">
+                <tr>
+                  <th className="sticky left-0 z-1 bg-zinc-50 px-4 py-3 font-medium dark:bg-zinc-900">
+                    Employee
+                  </th>
+                  <th className="px-4 py-3 font-medium text-right">Delivered</th>
+                  <th className="px-4 py-3 font-medium text-right">Units</th>
+                  <th className="px-4 py-3 font-medium text-right">Threshold</th>
+                  <th className="px-4 py-3 font-medium text-right">Rate</th>
+                  <th className="px-4 py-3 font-medium text-right">Total</th>
+                  <th className="px-4 py-3" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-200 bg-white dark:divide-zinc-800 dark:bg-zinc-950">
+                {employees.map((employee) => (
+                  <EmployeeRows
+                    key={employee.employeeId}
+                    employee={employee}
+                    expanded={expandedId === employee.employeeId}
+                    onToggle={() =>
+                      setExpandedId((current) =>
+                        current === employee.employeeId ? null : employee.employeeId
+                      )
+                    }
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile — dedicated cards, not a shrunk table. Same `employees`
+              array, same expand/collapse state as the desktop table above
+              (`expandedId`) — tapping "View orders" on one and switching to
+              a wide viewport shows it already expanded in the table too. */}
+          <div className="space-y-3 sm:hidden">
+            {employees.map((employee) => (
+              <EmployeeCard
+                key={employee.employeeId}
+                employee={employee}
+                period={period}
+                expanded={expandedId === employee.employeeId}
+                onToggle={() =>
+                  setExpandedId((current) =>
+                    current === employee.employeeId ? null : employee.employeeId
+                  )
+                }
+              />
+            ))}
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+/** Small "person" glyph for the mobile card header — purely decorative, no icon library. */
+function PersonIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.75" className="h-4.5 w-4.5">
+      <circle cx="10" cy="6.5" r="3" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3.5 17c.8-3.7 3.2-5.7 6.5-5.7s5.7 2 6.5 5.7" />
+    </svg>
+  );
+}
+
+function StatRow({ label, value, emphasized }) {
+  return (
+    <div className="flex items-center justify-between py-2">
+      <span className={`text-sm ${emphasized ? "font-medium text-zinc-900 dark:text-zinc-100" : "text-zinc-500 dark:text-zinc-400"}`}>
+        {label}
+      </span>
+      <span
+        className={`tabular-nums ${
+          emphasized
+            ? "text-lg font-semibold text-zinc-900 dark:text-zinc-50"
+            : "text-sm font-medium text-zinc-700 dark:text-zinc-300"
+        }`}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function EmployeeCard({ employee, period, expanded, onToggle }) {
+  return (
+    <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="flex items-start justify-between gap-3 p-4">
+        <div className="flex min-w-0 items-start gap-2.5">
+          <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+            <PersonIcon />
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+              {employee.employeeName}
+            </p>
+            <p className="truncate text-xs text-zinc-400">@{employee.username}</p>
+          </div>
+        </div>
+        <span className="shrink-0 rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+          {periodLabel(period)}
+        </span>
+      </div>
+
+      {!employee.configured ? (
+        <p className="border-t border-zinc-100 px-4 py-4 text-sm text-zinc-400 dark:border-zinc-800">
+          Commission not configured
+        </p>
+      ) : (
+        <>
+          <div className="divide-y divide-zinc-100 border-t border-zinc-100 px-4 dark:divide-zinc-800/80 dark:border-zinc-800">
+            <StatRow label="Delivered" value={employee.deliveredOrders} />
+            <StatRow label="Units" value={employee.commissionUnits} />
+            <StatRow label="Threshold" value={employee.threshold} />
+            <StatRow label="Rate" value={money(employee.commissionRate)} />
+            <StatRow label="Total" value={money(employee.totalCommission)} emphasized />
+          </div>
+
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={expanded}
+            className="flex w-full items-center justify-center gap-1.5 border-t border-zinc-100 py-3 text-sm font-medium text-zinc-700 transition active:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-300 dark:active:bg-zinc-800"
+          >
+            {expanded ? "Hide orders" : "View orders"}
+            <span aria-hidden="true" className={`transition-transform ${expanded ? "rotate-180" : ""}`}>
+              ▾
+            </span>
+          </button>
+
+          {expanded ? (
+            <div className="border-t border-zinc-100 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-900/60">
+              {employee.orders.length === 0 ? (
+                <p className="px-1 py-2 text-sm text-zinc-500 dark:text-zinc-400">
+                  No delivered orders this month.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {employee.orders.map((order) => (
+                    <MobileOrderRow key={order.id} order={order} />
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+}
+
+function MobileOrderRow({ order }) {
+  return (
+    <div className="rounded-xl border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-950">
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <span className="min-w-0 truncate font-mono text-xs text-zinc-700 dark:text-zinc-300">
+          {order.trackingNumber}
+        </span>
+        <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+          {PROVIDER_LABEL[order.provider] ?? order.provider}
+        </span>
+      </div>
+      <div className="flex items-center justify-between text-xs text-zinc-500 dark:text-zinc-400">
+        <span>{dateFormatter.format(new Date(order.deliveredAt))}</span>
+        <span className="tabular-nums text-zinc-700 dark:text-zinc-300">{money(order.price)}</span>
+        <span className="tabular-nums font-semibold text-zinc-900 dark:text-zinc-50">
+          {order.commissionUnits} unit{order.commissionUnits === 1 ? "" : "s"}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function EmployeeRows({ employee, expanded, onToggle }) {
+  if (!employee.configured) {
+    return (
+      <tr>
+        <td className="sticky left-0 z-1 bg-white px-4 py-3 font-medium text-zinc-900 dark:bg-zinc-950 dark:text-zinc-50">
+          {employee.employeeName}
+          <span className="ml-2 text-xs font-normal text-zinc-400">@{employee.username}</span>
+        </td>
+        <td colSpan={6} className="px-4 py-3 text-right text-xs text-zinc-400">
+          Commission not configured
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <>
+      <tr
+        className="cursor-pointer transition hover:bg-zinc-50 dark:hover:bg-zinc-900"
+        onClick={onToggle}
+      >
+        <td className="sticky left-0 z-1 bg-white px-4 py-3 font-medium text-zinc-900 dark:bg-zinc-950 dark:text-zinc-50">
+          {employee.employeeName}
+          <span className="ml-2 text-xs font-normal text-zinc-400">@{employee.username}</span>
+        </td>
+        <td className="px-4 py-3 text-right tabular-nums text-zinc-700 dark:text-zinc-300">
+          {employee.deliveredOrders}
+        </td>
+        <td className="px-4 py-3 text-right tabular-nums text-zinc-700 dark:text-zinc-300">
+          {employee.commissionUnits}
+        </td>
+        <td className="px-4 py-3 text-right tabular-nums text-zinc-500 dark:text-zinc-400">
+          {employee.threshold}
+        </td>
+        <td className="px-4 py-3 text-right tabular-nums text-zinc-700 dark:text-zinc-300">
+          {money(employee.commissionRate)}
+        </td>
+        <td className="px-4 py-3 text-right font-semibold tabular-nums text-zinc-900 dark:text-zinc-50">
+          {money(employee.totalCommission)}
+        </td>
+        <td className="px-4 py-3 text-right text-zinc-400">{expanded ? "▲" : "▼"}</td>
+      </tr>
+      {expanded ? (
+        <tr>
+          <td colSpan={7} className="bg-zinc-50 px-4 py-3 dark:bg-zinc-900/60">
+            {employee.orders.length === 0 ? (
+              <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                No delivered orders this month.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-140 text-left text-xs">
+                  <thead className="text-zinc-500 dark:text-zinc-400">
+                    <tr>
+                      <th className="py-1.5 pr-3 font-medium">Tracking</th>
+                      <th className="py-1.5 pr-3 font-medium">Provider</th>
+                      <th className="py-1.5 pr-3 font-medium">Delivered</th>
+                      <th className="py-1.5 pr-3 font-medium text-right">Price</th>
+                      <th className="py-1.5 pr-3 font-medium text-right">Units</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
+                    {employee.orders.map((order) => (
+                      <tr key={order.id}>
+                        <td className="py-1.5 pr-3 font-mono text-zinc-700 dark:text-zinc-300">
+                          {order.trackingNumber}
+                        </td>
+                        <td className="py-1.5 pr-3 text-zinc-500 dark:text-zinc-400">
+                          {PROVIDER_LABEL[order.provider] ?? order.provider}
+                        </td>
+                        <td className="py-1.5 pr-3 text-zinc-500 dark:text-zinc-400">
+                          {dateFormatter.format(new Date(order.deliveredAt))}
+                        </td>
+                        <td className="py-1.5 pr-3 text-right tabular-nums text-zinc-700 dark:text-zinc-300">
+                          {money(order.price)}
+                        </td>
+                        <td className="py-1.5 pr-3 text-right tabular-nums font-semibold text-zinc-900 dark:text-zinc-50">
+                          {order.commissionUnits}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </td>
+        </tr>
+      ) : null}
+    </>
+  );
+}
