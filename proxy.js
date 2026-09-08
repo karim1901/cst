@@ -23,6 +23,19 @@ export async function proxy(request) {
   const payload = await verifySessionToken(token);
   const isAuthenticated = Boolean(payload?.sub);
 
+  // "/" is never a real page — it only ever redirects, so it should never
+  // reach the server-rendered fallback in app/page.jsx (see that file's own
+  // comment). No role branch here: every role lands on the same
+  // `/dashboard`, which is already role-aware internally (see
+  // app/dashboard/page.jsx) — there's no separate merchant/employee/super
+  // admin route to pick between.
+  if (pathname === "/") {
+    const url = request.nextUrl.clone();
+    url.pathname = isAuthenticated ? "/dashboard" : "/login";
+    url.search = "";
+    return NextResponse.redirect(url);
+  }
+
   const isProtected = PROTECTED_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
   );
@@ -46,5 +59,5 @@ export async function proxy(request) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/login", "/register"],
+  matcher: ["/", "/dashboard/:path*", "/login", "/register"],
 };

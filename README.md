@@ -124,6 +124,16 @@ Roles: `super_admin`, `merchant`, `employee`.
   section it isn't authorized for (employees/super admins on
   `/dashboard/employees*` or `/dashboard/shipping-companies*`) is bounced to
   `/dashboard`; logout clears the cookie and returns you to `/login`.
+- **`/` is never a real page** — it only ever redirects (`/dashboard` if
+  authenticated, `/login` otherwise; every role shares the same
+  `/dashboard`, which is already role-aware internally, so there's no
+  separate merchant/employee/super-admin route to pick between). Handled at
+  both layers, same "defense in depth" split as everything else: `proxy.js`
+  redirects it at the edge (fast, token-only), and `app/page.jsx` is a
+  server component doing the identical `getCurrentUser()`-based redirect as
+  a fallback should the proxy ever stop covering it. Neither the old
+  Next.js starter content nor any other implementation detail is reachable
+  from `/`.
 
 ### Seeding the super admin
 
