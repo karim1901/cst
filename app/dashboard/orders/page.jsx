@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 
 import { getCurrentUser } from "@/lib/auth/current-user";
@@ -47,7 +48,13 @@ export default async function OrdersPage() {
           </Link>
         </header>
 
-        <OrdersPageClient isMerchant={isMerchant} employees={employees} />
+        {/* OrdersPageClient reads useSearchParams() (Follow-up's "Open
+            Order" deep link — see that component's own comment), which
+            Next.js requires a Suspense boundary for even on a fully
+            dynamic page. */}
+        <Suspense fallback={null}>
+          <OrdersPageClient isMerchant={isMerchant} employees={employees} />
+        </Suspense>
       </div>
     </div>
   );

@@ -40,6 +40,17 @@ const ICONS = {
       <path strokeLinecap="round" strokeLinejoin="round" d="M13 11.7c1.9.4 3.2 1.8 3.6 4.3" />
     </svg>
   ),
+  track: (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.75" className="h-4.5 w-4.5">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M5 3h10v14l-5-3-5 3V3Z" />
+    </svg>
+  ),
+  returns: (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.75" className="h-4.5 w-4.5">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 9.5a6 6 0 1 1 1.8 4.3" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 9.5V5.5M4 9.5h4" />
+    </svg>
+  ),
   shipping: (
     <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.75" className="h-4.5 w-4.5">
       <path strokeLinecap="round" strokeLinejoin="round" d="M2.5 13.5V6.8L10 3l7.5 3.8v6.7L10 17l-7.5-3.5Z" />
@@ -63,6 +74,16 @@ function navItemsFor(role) {
     items.push({ href: "/dashboard/commission", label: "Commission", icon: ICONS.commission });
   }
   if (role === "merchant") {
+    // Follow-up is a merchant-only manual follow-up list layered on top of
+    // Orders (see app/api/order-followups/route.js's module comment) —
+    // never shown to employees or super admins.
+    items.push({ href: "/dashboard/track", label: "Follow-up", icon: ICONS.track });
+    // Returns — internal management of cancelled/refused/returned orders,
+    // deliberately separate from Follow-up (see app/_components/returns/
+    // ReturnsList.jsx's module comment for why). Merchant-only for the same
+    // reason Follow-up is: it's a merchant-side internal workflow, not
+    // something an employee acts on directly.
+    items.push({ href: "/dashboard/returns", label: "Returns", icon: ICONS.returns });
     items.push({ href: "/dashboard/employees", label: "Employees", icon: ICONS.employees });
     items.push({ href: "/dashboard/shipping-companies", label: "Shipping Companies", icon: ICONS.shipping });
   }

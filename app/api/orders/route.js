@@ -7,6 +7,11 @@ import { SHIPPING_PROVIDER_VALUES } from "@/models/ShippingCompany";
 import Order from "@/models/Order";
 import { findOwnedEmployee } from "@/lib/employees";
 import { isValidPeriod } from "@/lib/tracking/counter";
+import {
+  ORDER_STATUS_FILTERS,
+  ORDER_STATUS_FILTER_VALUES,
+  RETURN_STATUS_RAW_TOKENS,
+} from "@/lib/orders/status-groups";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -60,6 +65,9 @@ export async function GET(request) {
   const requestedPeriod = searchParams.get("period");
   const period = requestedPeriod && isValidPeriod(requestedPeriod) ? requestedPeriod : null;
 
+  const requestedStatus = searchParams.get("status");
+  const statusFilter = ORDER_STATUS_FILTER_VALUES.includes(requestedStatus) ? requestedStatus : "all";
+
   const page = Math.max(1, Number.parseInt(searchParams.get("page"), 10) || 1);
   const pageSize = Math.min(
     MAX_PAGE_SIZE,
@@ -74,17 +82,43 @@ export async function GET(request) {
   // order's tracking number, not createdAt, decides which month it's in.
   if (period) filter.numericTrackingNumber = { $regex: `^${period}` };
 
+  // "Tous"/"Livré"/"Progress"/"Retour" — see lib/orders/status-groups.js.
+  // "Livré" reuses `deliveredAt` (set once, authoritative — the same field
+  // lib/orders/dashboard-stats.js and lib/commission/report.js already
+  // treat as the real "was this ever delivered" fact, never re-derived from
+  // status text here). "Retour" matches `lastKnownStatus` against the
+  // SAME canonical token list status-groups.js exports — a
+  // case/diacritic-insensitive collation on the query does the equivalent
+  // of that module's own JS normalization, so there is exactly one
+  // definition of "what counts as a return", not two.
+  let useCollation = false;
+  if (statusFilter === ORDER_STATUS_FILTERS.DELIVERED) {
+    filter.deliveredAt = { $ne: null };
+  } else if (statusFilter === ORDER_STATUS_FILTERS.RETURN) {
+    filter.deliveredAt = null;
+    filter.lastKnownStatus = { $in: RETURN_STATUS_RAW_TOKENS };
+    useCollation = true;
+  } else if (statusFilter === ORDER_STATUS_FILTERS.PROGRESS) {
+    filter.deliveredAt = null;
+    filter.lastKnownStatus = { $nin: RETURN_STATUS_RAW_TOKENS };
+    useCollation = true;
+  }
+
+  const withCollation = (query) =>
+    useCollation ? query.collation({ locale: "en", strength: 1 }) : query;
+
   const [orders, total] = await Promise.all([
-    Order.find(filter)
-      .select(
-        "employeeId provider trackingNumber receiverName phone city address productNature price lastKnownStatus deliveredAt createdAt"
-      )
-      .sort({ createdAt: -1 })
-      .skip((page - 1) * pageSize)
-      .limit(pageSize)
-      .populate({ path: "employeeId", select: "name username" })
-      .lean(),
-    Order.countDocuments(filter),
+    withCollation(
+      Order.find(filter)
+        .select(
+          "employeeId provider trackingNumber receiverName phone city address productNature price lastKnownStatus deliveredAt createdAt"
+        )
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * pageSize)
+        .limit(pageSize)
+        .populate({ path: "employeeId", select: "name username" })
+    ).lean(),
+    withCollation(Order.countDocuments(filter)),
   ]);
 
   return NextResponse.json({

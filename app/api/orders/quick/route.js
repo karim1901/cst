@@ -21,6 +21,7 @@ import {
 } from "@/lib/quick/tracking-number";
 import { periodFor, isValidPeriod, periodDateRange } from "@/lib/tracking/counter";
 import { syncOrderStatus } from "@/lib/commission/sync-status";
+import { matchesStatusFilter, ORDER_STATUS_FILTER_VALUES } from "@/lib/orders/status-groups";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -115,7 +116,9 @@ export async function GET(request) {
     );
   }
 
-  const requestedPeriod = new URL(request.url).searchParams.get("period");
+  const searchParams = new URL(request.url).searchParams;
+
+  const requestedPeriod = searchParams.get("period");
   const period = isValidPeriod(requestedPeriod) ? requestedPeriod : periodFor();
   // Quick's list already comes from MongoDB (not a tracking-number scan),
   // so "selected month" is just a `createdAt` range filter — an order's
@@ -125,9 +128,13 @@ export async function GET(request) {
 
   const { employeeId: requestedEmployeeId, error: employeeError } = await resolveListingEmployeeId(
     currentUser,
-    new URL(request.url).searchParams.get("employeeId")
+    searchParams.get("employeeId")
   );
   if (employeeError) return employeeError;
+
+  // "Tous"/"Livré"/"Progress"/"Retour" — see lib/orders/status-groups.js.
+  const requestedStatus = searchParams.get("status");
+  const statusFilter = ORDER_STATUS_FILTER_VALUES.includes(requestedStatus) ? requestedStatus : "all";
 
   // Same ownership rule as order creation: an employee sees only their own
   // orders. A merchant sees only the ones they created directly
@@ -197,7 +204,15 @@ export async function GET(request) {
     })
   );
 
-  return NextResponse.json({ orders, period });
+  // Filtered AFTER the per-order live-status lookup above (status isn't
+  // known any earlier — it depends on that call), but still before the
+  // response is sent, so a non-matching order's full details are never
+  // shipped to the browser. See lib/orders/status-groups.js.
+  const filteredOrders = orders.filter((order) =>
+    matchesStatusFilter(SHIPPING_PROVIDERS.QUICK_LIVRAISON, order.status, statusFilter)
+  );
+
+  return NextResponse.json({ orders: filteredOrders, period });
 }
 
 /**

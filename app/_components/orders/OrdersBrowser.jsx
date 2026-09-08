@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import StatusBadge from "@/app/_components/orders/StatusBadge";
+import AddToFollowUpButton from "@/app/_components/orders/AddToFollowUpButton";
 import { Spinner, ErrorBanner } from "@/app/_components/orders/shared";
 import { SHIPPING_PROVIDERS } from "@/lib/shipping/providers";
 
@@ -19,7 +20,7 @@ const dateFormatter = new Intl.DateTimeFormat("en-GB", {
  * Merchant-only, mirrors the visual language of OzonOrdersList/
  * QuickOrdersList's cards rather than introducing a table.
  */
-export default function OrdersBrowser({ provider, employeeId, period }) {
+export default function OrdersBrowser({ provider, employeeId, period, status = "all", isFollowedUp, onFollowUpAdded }) {
   const [state, setState] = useState("loading"); // loading | ready | error
   const [errorMessage, setErrorMessage] = useState("");
   const [data, setData] = useState({ orders: [], page: 1, totalPages: 1, total: 0 });
@@ -28,7 +29,7 @@ export default function OrdersBrowser({ provider, employeeId, period }) {
   // Reset to page 1 whenever the filters themselves change — same "adjust
   // state during render" pattern used by the other order-list components in
   // this folder.
-  const filterKey = `${provider}|${employeeId}|${period}`;
+  const filterKey = `${provider}|${employeeId}|${period}|${status}`;
   const [renderedForFilterKey, setRenderedForFilterKey] = useState(filterKey);
   if (filterKey !== renderedForFilterKey) {
     setRenderedForFilterKey(filterKey);
@@ -52,6 +53,7 @@ export default function OrdersBrowser({ provider, employeeId, period }) {
     const params = new URLSearchParams({ provider, page: String(page) });
     if (employeeId) params.set("employeeId", employeeId);
     if (period) params.set("period", period);
+    if (status && status !== "all") params.set("status", status);
 
     fetch(`/api/orders?${params.toString()}`, { signal: controller.signal })
       .then(async (res) => {
@@ -67,7 +69,7 @@ export default function OrdersBrowser({ provider, employeeId, period }) {
       });
 
     return () => controller.abort();
-  }, [provider, employeeId, period, page]);
+  }, [provider, employeeId, period, status, page]);
 
   if (state === "loading") {
     return (
@@ -94,7 +96,13 @@ export default function OrdersBrowser({ provider, employeeId, period }) {
     <div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {data.orders.map((order) => (
-          <OrderCard key={order.id} order={order} provider={provider} />
+          <OrderCard
+            key={order.id}
+            order={order}
+            provider={provider}
+            isFollowedUp={isFollowedUp}
+            onFollowUpAdded={onFollowUpAdded}
+          />
         ))}
       </div>
 
@@ -136,7 +144,7 @@ function Row({ label, children }) {
   );
 }
 
-function OrderCard({ order, provider }) {
+function OrderCard({ order, provider, isFollowedUp, onFollowUpAdded }) {
   return (
     <div className="w-full overflow-hidden rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
       <div className="mb-2 flex items-start justify-between gap-3">
@@ -165,6 +173,17 @@ function OrderCard({ order, provider }) {
         <Row label="Price">{order.price != null ? `${order.price} DH` : "—"}</Row>
         <Row label="Created">{dateFormatter.format(new Date(order.createdAt))}</Row>
       </div>
+
+      {isFollowedUp ? (
+        <div className="mt-3">
+          <AddToFollowUpButton
+            provider={provider}
+            trackingNumber={order.trackingNumber}
+            isFollowedUp={isFollowedUp(order.trackingNumber)}
+            onAdded={onFollowUpAdded}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

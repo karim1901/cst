@@ -318,6 +318,79 @@ proven pieces rather than a new one per case:
 An employee's own Orders page is unchanged in substance — provider tabs, no
 employee/month filter (they have nothing to filter by), their own live view.
 
+### Status filter — Tous / Livré / Progress / Retour
+
+`StatusFilter.jsx`, next to the provider tabs, everyone (not just
+merchants). Combines with whichever employee/month/provider filter is also
+active. One classification, `lib/orders/status-groups.js`, reused
+everywhere a status needs bucketing (this filter, the Dashboard's Livré/
+Retour cards):
+
+- **Livré** — `isDeliveredDisplayStatus(provider, status)` (provider-aware —
+  Ozon's "Livré" vs. Quick's "DELIVERED", see `lib/commission/status.js`).
+- **Retour** — `annulé`/`refusé`/`retourné` (+ English equivalents),
+  normalized (case/accent-insensitive) so "ANNULE"/"annulé"/"Annulé" all
+  match — `isReturnStatus()`.
+- **Progress** — neither of the above.
+
+Filtered **server-side**, not by hiding already-downloaded rows:
+`GET /api/orders/{ozon,quick}` accept `?status=` and skip non-matching
+orders before they're ever sent to the browser (Ozon: before `writeLine` in
+the stream; Quick: filtering the final array, since status there is only
+known after each order's own live status check). `GET /api/orders`
+(the DB-backed "all employees" browser) turns it into a Mongo query —
+`Livré` reuses `deliveredAt` (the same authoritative field the Dashboard/
+Commission already treat as "was this ever delivered", never re-derived
+from status text there), `Retour`/`Progress` match `lastKnownStatus`
+against the exact same canonical token list via a case/accent-insensitive
+**collation** (`{locale:"en", strength:1}`) — MongoDB's own Unicode-aware
+equivalent of the JS normalization in `status-groups.js`, so there is
+exactly one definition of "what counts as a return", not a second one
+reimplemented in query syntax.
+
+### Follow-up — a merchant's own manual reminder list
+
+Not shipping tracking — Ozon/Quick tracking numbers and their status sync
+are untouched. This is "the merchant wants to remember to call this
+customer back", independent of the order's actual delivery status, and is
+entirely **merchant-only** (the whole feature is merchant-framed end to
+end — employees get no UI for it and every route 403s them).
+
+- **Model**: `models/OrderFollowUp.js` — `{merchantId, orderId, employeeId,
+  provider, note, createdAt, updatedAt}`. Deliberately does NOT snapshot
+  descriptive order fields (receiver, phone, price, ...): orders in this
+  app are immutable and never deleted, so every read simply populates the
+  referenced `Order` live — one source of truth, not two that could drift.
+  A unique `{merchantId, orderId}` index is the duplicate-prevention rule;
+  `POST /api/order-followups` catches the resulting E11000 on a losing
+  concurrent request and returns the winning request's record instead of
+  erroring.
+- **Identified by `{provider, trackingNumber}`**, not a raw database id —
+  the same pair `Order`'s own unique index already treats as canonical
+  identity, so "add to follow-up" works uniformly from a card on any of the
+  three Orders-page listing surfaces (the live Ozon/Quick streams don't
+  necessarily carry this app's internal `Order._id` per item; every card
+  always knows its own tracking number). The server resolves and verifies
+  ownership (`{merchantId: currentUser.id, provider, trackingNumber}`)
+  before touching anything — an id/tracking number that isn't a real, owned
+  order 404s exactly like one that doesn't exist (IDOR-safe).
+- **`AddToFollowUpButton.jsx`** on every order card (all three listing
+  surfaces) — "Add to Follow-up", or "Added to Follow-up" (disabled-style)
+  once added, driven by one `GET /api/order-followups` fetched once at the
+  Orders-page level (`OrdersPageClient.jsx`), not per card.
+- **`NoteModal.jsx`** — the app's first modal (a `fixed inset-0` backdrop +
+  centered/bottom-sheet panel, Escape/backdrop-click to close), reused
+  as-is for both "add" and "edit note" rather than two dialogs.
+- **`/dashboard/track`** (`FollowUpList.jsx`) — every follow-up item as a
+  mobile-first card (never a table): receiver, phone, live-populated
+  status/provider/price, the note, and three actions — **"Open Order"**
+  links back to `/dashboard/orders` with `?provider=&employee=&phone=`
+  pre-filled (reusing the Orders page's own existing filters/phone-search
+  rather than a second order-details view), **"Edit Follow-up"** opens the
+  same `NoteModal`, **"Remove from Follow-up"** (`DELETE /api/order-followups/[id]`)
+  removes only the `OrderFollowUp` record — never the `Order`, its status,
+  tracking data, or commission numbers.
+
 ```
 Browser  →  our Next.js API  →  provider API
 ```

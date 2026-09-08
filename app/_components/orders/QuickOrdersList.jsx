@@ -3,8 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 
 import MonthSelect from "@/app/_components/orders/MonthSelect";
+import AddToFollowUpButton from "@/app/_components/orders/AddToFollowUpButton";
 import { Spinner } from "@/app/_components/orders/shared";
 import { periodFor } from "@/lib/tracking/counter";
+import { SHIPPING_PROVIDERS } from "@/lib/shipping/providers";
 
 /**
  * Quick Livraison orders — fetched from our own backend
@@ -19,7 +21,15 @@ import { periodFor } from "@/lib/tracking/counter";
  * documented for this integration (see lib/quick/parse.js), so the raw
  * status text is shown as-is rather than guessing at a classification.
  */
-export default function QuickOrdersList({ employeeId = null, period: controlledPeriod, onPeriodChange }) {
+export default function QuickOrdersList({
+  employeeId = null,
+  period: controlledPeriod,
+  onPeriodChange,
+  status = "all",
+  initialSearch = "",
+  isFollowedUp,
+  onFollowUpAdded,
+}) {
   // Controlled when a parent passes `period` (the merchant Orders page) —
   // uncontrolled otherwise (the plain employee view). Same pattern as
   // OzonOrdersList.
@@ -30,14 +40,14 @@ export default function QuickOrdersList({ employeeId = null, period: controlledP
   const [state, setState] = useState("loading"); // loading | ready | not-configured | error
   const [errorMessage, setErrorMessage] = useState("");
   const [orders, setOrders] = useState([]);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(initialSearch);
 
   // Reset per-fetch state when the selected month OR the viewed employee
   // changes — done here, during render (React's recommended "adjust state
   // when a value changes" pattern), rather than as setState calls at the
   // top of the effect below, which trigger an avoidable extra cascading
   // render.
-  const resetKey = `${period}|${employeeId}`;
+  const resetKey = `${period}|${employeeId}|${status}`;
   const [renderedForKey, setRenderedForKey] = useState(resetKey);
   if (resetKey !== renderedForKey) {
     setRenderedForKey(resetKey);
@@ -50,6 +60,7 @@ export default function QuickOrdersList({ employeeId = null, period: controlledP
 
     const params = new URLSearchParams({ period });
     if (employeeId) params.set("employeeId", employeeId);
+    if (status && status !== "all") params.set("status", status);
 
     fetch(`/api/orders/quick?${params.toString()}`, { signal: controller.signal })
       .then(async (res) => {
@@ -73,7 +84,7 @@ export default function QuickOrdersList({ employeeId = null, period: controlledP
       });
 
     return () => controller.abort();
-  }, [period, employeeId]);
+  }, [period, employeeId, status]);
 
   const visible = useMemo(() => {
     const query = search.trim();
@@ -135,7 +146,12 @@ export default function QuickOrdersList({ employeeId = null, period: controlledP
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {visible.map((order, index) => (
-            <OrderCard key={order?.id ?? order?.trackingNumber ?? index} order={order} />
+            <OrderCard
+              key={order?.id ?? order?.trackingNumber ?? index}
+              order={order}
+              isFollowedUp={isFollowedUp}
+              onFollowUpAdded={onFollowUpAdded}
+            />
           ))}
         </div>
       )}
@@ -154,7 +170,7 @@ function Row({ label, children }) {
   );
 }
 
-function OrderCard({ order }) {
+function OrderCard({ order, isFollowedUp, onFollowUpAdded }) {
   const statusLabel = order.statusUnavailable ? "Status unavailable" : order.status || "Unknown";
 
   return (
@@ -189,6 +205,17 @@ function OrderCard({ order }) {
         <Row label="Price">{order.price != null ? `${order.price} DH` : "—"}</Row>
         {order.note ? <Row label="Note">{order.note}</Row> : null}
       </div>
+
+      {isFollowedUp ? (
+        <div className="mt-3">
+          <AddToFollowUpButton
+            provider={SHIPPING_PROVIDERS.QUICK_LIVRAISON}
+            trackingNumber={order.trackingNumber}
+            isFollowedUp={isFollowedUp(order.trackingNumber)}
+            onAdded={onFollowUpAdded}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

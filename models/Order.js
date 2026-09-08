@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 
 import { SHIPPING_PROVIDER_VALUES } from "./ShippingCompany.js";
 import { USER_ROLE_VALUES, USER_ROLES } from "./User.js";
+import { RETURN_VALIDATION_STATUS_VALUES } from "../lib/returns/constants.js";
 
 const { Schema } = mongoose;
 
@@ -117,6 +118,35 @@ const orderSchema = new Schema(
     // for August that happens to be delivered in September still belongs to
     // AUGUST's commission.
     deliveredAt: { type: Date, default: null },
+
+    // ---- Returns management (app/dashboard/returns) -------------------
+    // The MERCHANT's own internal "did I physically get this package back?"
+    // confirmation — completely independent from `lastKnownStatus` above.
+    // The shipping provider reporting "Retourné"/"Refusé"/"Annulé" only
+    // means the shipment is returning/returned/refused/cancelled at the
+    // PROVIDER; it does NOT mean the merchant has the physical package in
+    // hand. Every order — new or pre-existing — defaults to "pending";
+    // nothing ever sets this to "validated" automatically (see
+    // app/api/returns/[id]/validate/route.js, the only writer of these 3
+    // fields, and lib/returns/sync.js, which explicitly never touches
+    // them).
+    returnValidationStatus: {
+      type: String,
+      enum: {
+        values: [...RETURN_VALIDATION_STATUS_VALUES],
+        message: "`{VALUE}` is not a valid return validation status.",
+      },
+      default: "pending",
+    },
+    // When the merchant clicked "Validate Return" (null while pending, or
+    // after "Mark as Pending" reverts it — see the unvalidate route).
+    returnValidatedAt: { type: Date, default: null },
+    // Who validated it — audit info per the feature's own requirement.
+    returnValidatedBy: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
   },
   { timestamps: true }
 );
@@ -133,6 +163,20 @@ orderSchema.index({ provider: 1, trackingNumber: 1 }, { unique: true });
 orderSchema.index({ employeeId: 1, numericTrackingNumber: 1 });
 orderSchema.index({ employeeId: 1, deliveredAt: 1 });
 orderSchema.index({ merchantId: 1, deliveredAt: 1 });
+// The order-lifecycle page's Delivered section (lib/returns/list.js), which
+// combines an optional employee filter with an optional delivery-date
+// range — serves both together, not just `merchantId` alone.
+orderSchema.index({ merchantId: 1, employeeId: 1, deliveredAt: -1 });
+// The Returns page's own access pattern (lib/returns/list.js): this
+// merchant's cancelled/refused/returned orders, optionally narrowed by
+// internal validation state, newest first. Declares the same
+// case/accent-insensitive collation that module's queries use on
+// `lastKnownStatus` so Mongo can actually use this index for that filter,
+// not just for `merchantId`/`returnValidationStatus`.
+orderSchema.index(
+  { merchantId: 1, returnValidationStatus: 1, lastKnownStatus: 1, createdAt: -1 },
+  { collation: { locale: "en", strength: 1 } }
+);
 
 /**
  * Guard against "OverwriteModelError" when the module is re-evaluated during

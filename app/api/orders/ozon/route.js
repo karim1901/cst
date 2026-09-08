@@ -21,6 +21,7 @@ import { ozonTrackingPrefixFor, buildFullOzonTrackingNumber } from "@/lib/ozon/t
 import { periodFor, isValidPeriod } from "@/lib/tracking/counter";
 import { resolveDisplayStatus, getLivreurDisplayPhone, findDeliveredAt } from "@/lib/ozon/history";
 import { syncOrderStatus } from "@/lib/commission/sync-status";
+import { matchesStatusFilter, ORDER_STATUS_FILTER_VALUES } from "@/lib/orders/status-groups";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -162,6 +163,12 @@ export async function GET(request) {
   );
   if (actorError) return actorError;
 
+  // "Tous"/"Livré"/"Progress"/"Retour" — see lib/orders/status-groups.js.
+  // Filtered HERE, before streaming, so a non-matching order is never sent
+  // to the browser at all (not a client-side hide after download).
+  const requestedStatus = searchParams.get("status");
+  const statusFilter = ORDER_STATUS_FILTER_VALUES.includes(requestedStatus) ? requestedStatus : "all";
+
   let startCounter;
   try {
     // The CURRENT month always reads from the live `User.ozonTrackingCounter`
@@ -195,7 +202,17 @@ export async function GET(request) {
       try {
         const orders = await fetchOzonOrdersForMonth(credentials, prefix, period, startCounter, {
           signal: request.signal,
-          onOrder: (order) => writeLine({ type: "order", order: normalizeOrder(order) }),
+          onOrder: (order) => {
+            const normalized = normalizeOrder(order);
+            // Classification still runs (via normalizeOrder, above) even for
+            // an order this filter excludes — that's also what feeds
+            // syncOrderStatus's local cache, and must never be skipped just
+            // because the browser won't see this particular order.
+            if (!matchesStatusFilter(SHIPPING_PROVIDERS.OZON_EXPRESS, normalized._displayStatus, statusFilter)) {
+              return;
+            }
+            writeLine({ type: "order", order: normalized });
+          },
         });
         writeLine({ type: "done", count: orders.length });
       } catch (error) {

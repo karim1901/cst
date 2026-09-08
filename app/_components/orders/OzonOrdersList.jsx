@@ -4,9 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 
 import StatusBadge from "@/app/_components/orders/StatusBadge";
 import MonthSelect from "@/app/_components/orders/MonthSelect";
+import AddToFollowUpButton from "@/app/_components/orders/AddToFollowUpButton";
 import { shouldShowComment } from "@/lib/ozon/status";
 import { Spinner } from "@/app/_components/orders/shared";
 import { periodFor } from "@/lib/tracking/counter";
+import { SHIPPING_PROVIDERS } from "@/lib/shipping/providers";
 
 /**
  * Ozon Express orders — fetched from our own backend (`GET /api/orders/ozon`),
@@ -36,7 +38,15 @@ function trackingSortKey(order) {
   return Number.isFinite(value) ? value : 0;
 }
 
-export default function OzonOrdersList({ employeeId = null, period: controlledPeriod, onPeriodChange }) {
+export default function OzonOrdersList({
+  employeeId = null,
+  period: controlledPeriod,
+  onPeriodChange,
+  status = "all",
+  initialSearch = "",
+  isFollowedUp,
+  onFollowUpAdded,
+}) {
   // Controlled when a parent passes `period` (the merchant Orders page, so
   // its own OrderFilters is the single month picker on screen instead of a
   // second one duplicated in here) — uncontrolled otherwise (the plain
@@ -50,14 +60,14 @@ export default function OzonOrdersList({ employeeId = null, period: controlledPe
   const [warning, setWarning] = useState("");
   const [orders, setOrders] = useState([]);
   const [streamDone, setStreamDone] = useState(false);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(initialSearch);
 
   // Reset per-fetch state when the selected month OR the viewed employee
   // changes — done here, during render (React's recommended "adjust state
   // when a value changes" pattern), rather than as setState calls at the
   // top of the effect below, which trigger an avoidable extra cascading
   // render.
-  const resetKey = `${period}|${employeeId}`;
+  const resetKey = `${period}|${employeeId}|${status}`;
   const [renderedForKey, setRenderedForKey] = useState(resetKey);
   if (resetKey !== renderedForKey) {
     setRenderedForKey(resetKey);
@@ -77,6 +87,7 @@ export default function OzonOrdersList({ employeeId = null, period: controlledPe
       try {
         const params = new URLSearchParams({ period });
         if (employeeId) params.set("employeeId", employeeId);
+        if (status && status !== "all") params.set("status", status);
         res = await fetch(`/api/orders/ozon?${params.toString()}`, {
           signal: controller.signal,
         });
@@ -157,7 +168,7 @@ export default function OzonOrdersList({ employeeId = null, period: controlledPe
     run();
 
     return () => controller.abort();
-  }, [period, employeeId]);
+  }, [period, employeeId, status]);
 
   const visible = useMemo(() => {
     const query = search.trim();
@@ -236,7 +247,12 @@ export default function OzonOrdersList({ employeeId = null, period: controlledPe
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {visible.map((order, index) => (
-            <OrderCard key={order?.INFOS?.["TRACKING-NUMBER"] ?? index} order={order} />
+            <OrderCard
+              key={order?.INFOS?.["TRACKING-NUMBER"] ?? index}
+              order={order}
+              isFollowedUp={isFollowedUp}
+              onFollowUpAdded={onFollowUpAdded}
+            />
           ))}
         </div>
       )}
@@ -255,8 +271,9 @@ function Row({ label, children }) {
   );
 }
 
-function OrderCard({ order }) {
+function OrderCard({ order, isFollowedUp, onFollowUpAdded }) {
   const infos = order?.INFOS ?? {};
+  const trackingNumber = infos["TRACKING-NUMBER"];
   const displayStatus = order?._displayStatus ?? order?.STATUT;
   const courierPhone = order?._courierPhone ?? "";
   const commentVisible = shouldShowComment(displayStatus);
@@ -267,7 +284,7 @@ function OrderCard({ order }) {
     <div className="w-full overflow-hidden rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
       <div className="mb-2 flex items-start justify-between gap-3">
         <span className="min-w-0 break-all font-mono text-sm text-zinc-700 dark:text-zinc-300">
-          {infos["TRACKING-NUMBER"]}
+          {trackingNumber}
         </span>
         <StatusBadge status={displayStatus} />
       </div>
@@ -286,6 +303,17 @@ function OrderCard({ order }) {
         {date ? <Row label="Date">{date}</Row> : null}
         {courierPhone ? <Row label="Courier">{courierPhone}</Row> : null}
       </div>
+
+      {isFollowedUp ? (
+        <div className="mt-3">
+          <AddToFollowUpButton
+            provider={SHIPPING_PROVIDERS.OZON_EXPRESS}
+            trackingNumber={trackingNumber}
+            isFollowedUp={isFollowedUp(trackingNumber)}
+            onAdded={onFollowUpAdded}
+          />
+        </div>
+      ) : null}
 
       {comment ? (
         <p className="mt-3 rounded-md bg-zinc-50 p-2 text-sm text-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-300">

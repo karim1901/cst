@@ -20,14 +20,20 @@ function lastTwelvePeriods(now = new Date()) {
   return periods;
 }
 
-export default function MonthSelect({ value, onChange, disabled }) {
+// `allowAll` prepends an "All Months" option (value `""`) — opt-in, off by
+// default, so every existing caller (the Orders page) keeps its exact
+// current behavior unchanged. Used by the Returns page's All section (see
+// app/_components/returns/ReturnsList.jsx) where "no month selected" is a
+// real, meaningful choice, not just a field left blank.
+export default function MonthSelect({ value, onChange, disabled, allowAll = false }) {
   const periods = lastTwelvePeriods();
+  const withAll = allowAll ? [{ value: "", label: "All Months" }, ...periods] : periods;
   // The currently-selected period might not be one of the last 12 (an old
   // link, a bookmark) — keep it selectable/visible rather than silently
   // snapping to something else.
-  const options = periods.some((p) => p.value === value)
-    ? periods
-    : [{ value, label: value }, ...periods];
+  const options = withAll.some((p) => p.value === value)
+    ? withAll
+    : [{ value, label: value }, ...withAll];
 
   return (
     <select
