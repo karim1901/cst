@@ -220,11 +220,22 @@ const userSchema = new Schema(
       type: String,
       select: false,
     },
-    // DORMANT — Quick Livraison still uses the per-month TrackingCounter
-    // model exclusively (see lib/quick/reserve-tracking-number.js); this
-    // field is not part of that and is not read or written anywhere.
+    // ACTIVE — the authoritative live counter for Quick Livraison tracking
+    // numbers, mirroring `ozonTrackingCounter` exactly (same NEXT-UNUSED
+    // semantics, same CAS reserve/release mechanism — see
+    // lib/quick/reserve-tracking-number.js). Stored as a genuine Number
+    // (unlike `ozonTrackingCounter`, which stores its string form for
+    // historical reasons — see that field's own comment; Ozon's own
+    // behavior is deliberately left untouched) so `typeof` and Mongo
+    // queries/aggregations on this field behave as expected.
+    // Deliberately does NOT reset monthly — a single continuous value,
+    // same as Ozon's. The per-period `TrackingCounter` model remains the
+    // source for PAST months' Quick history — see
+    // lib/quick/reserve-tracking-number.js#peekQuickCounterForPeriod —
+    // untouched by this field's reserve/release.
     quickTrackingCounter: {
-      type: String,
+      type: Number,
+      min: [0, "quickTrackingCounter cannot be negative."],
       select: false,
     },
   },

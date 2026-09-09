@@ -6,6 +6,7 @@ import { findOwnedEmployee } from "@/lib/employees";
 import { queryOrdersForSection, getSectionCounts } from "@/lib/returns/list";
 import { resolveDeliveryDateRange } from "@/lib/returns/delivery-date";
 import { isValidPeriod } from "@/lib/tracking/counter";
+import { SHIPPING_PROVIDER_VALUES } from "@/lib/shipping/providers";
 import {
   SHIPPING_STATUS_FILTER_VALUES,
   RETURN_VALIDATION_FILTER_VALUES,
@@ -51,6 +52,14 @@ export async function GET(request) {
   }
 
   const searchParams = new URL(request.url).searchParams;
+
+  // Provider separation — REQUIRED, never a combined Ozon+Quick query (see
+  // lib/returns/list.js's own comment). Validated against a fixed
+  // allow-list, never trusted as-is from the client (item 11/34).
+  const requestedProvider = searchParams.get("provider");
+  if (!SHIPPING_PROVIDER_VALUES.includes(requestedProvider)) {
+    return NextResponse.json({ error: "A valid provider is required." }, { status: 400 });
+  }
 
   const requestedSection = searchParams.get("section");
   const section = ORDER_LIFECYCLE_SECTION_VALUES.includes(requestedSection)
@@ -114,6 +123,7 @@ export async function GET(request) {
 
   const [{ returns, total }, counts] = await Promise.all([
     queryOrdersForSection(currentUser.id, {
+      provider: requestedProvider,
       section,
       shippingStatus,
       validation,
@@ -123,10 +133,11 @@ export async function GET(request) {
       page,
       pageSize,
     }),
-    getSectionCounts(currentUser.id),
+    getSectionCounts(currentUser.id, requestedProvider),
   ]);
 
   return NextResponse.json({
+    provider: requestedProvider,
     section,
     returns,
     page,

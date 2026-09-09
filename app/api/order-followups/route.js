@@ -33,12 +33,24 @@ async function requireMerchant() {
   return { currentUser };
 }
 
-/** Every follow-up item belonging to the authenticated merchant. */
-export async function GET() {
+/**
+ * Every follow-up item belonging to the authenticated merchant. Optional
+ * `?provider=` (validated against SHIPPING_PROVIDER_VALUES; anything else
+ * is ignored, not rejected — see app/_components/track/FollowUpList.jsx's
+ * ProviderTabs, which always sends a valid value, vs.
+ * OrdersPageClient.jsx's own unfiltered call for its cross-provider
+ * "already added" lookup, which must keep working exactly as before this
+ * parameter existed) scopes to one provider's follow-ups only, enforced at
+ * the MongoDB query level (item 9/11).
+ */
+export async function GET(request) {
   const { currentUser, error } = await requireMerchant();
   if (error) return error;
 
-  const followUps = await listFollowUpsForMerchant(currentUser.id);
+  const requestedProvider = new URL(request.url).searchParams.get("provider");
+  const provider = SHIPPING_PROVIDER_VALUES.includes(requestedProvider) ? requestedProvider : null;
+
+  const followUps = await listFollowUpsForMerchant(currentUser.id, provider);
   return NextResponse.json({ followUps });
 }
 

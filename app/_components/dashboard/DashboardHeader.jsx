@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+import { useLocale } from "@/app/_components/i18n/LocaleProvider";
+
 /**
  * Compact replacement for the old full "Your account" card — name, active
  * status, and a notifications affordance in one row. There is no
@@ -11,6 +13,7 @@ import { useState } from "react";
  */
 export default function DashboardHeader({ name, isActive }) {
   const [open, setOpen] = useState(false);
+  const { t } = useLocale();
 
   return (
     <div className="mb-6 flex items-center justify-between gap-3 sm:mb-8">
@@ -26,7 +29,7 @@ export default function DashboardHeader({ name, isActive }) {
           }`}
         >
           <span className={`h-1.5 w-1.5 rounded-full ${isActive ? "bg-emerald-500" : "bg-zinc-400"}`} />
-          {isActive ? "Active" : "Inactive"}
+          {isActive ? t("common.active") : t("common.inactive")}
         </span>
       </div>
 
@@ -35,7 +38,7 @@ export default function DashboardHeader({ name, isActive }) {
           type="button"
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
-          aria-label="Notifications"
+          aria-label={t("common.notifications")}
           className="grid h-10 w-10 place-items-center rounded-full border border-zinc-200 text-zinc-600 transition hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-800"
         >
           <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.75" className="h-5 w-5">
@@ -45,9 +48,9 @@ export default function DashboardHeader({ name, isActive }) {
         </button>
 
         {open ? (
-          <div className="absolute right-0 z-10 mt-2 w-56 rounded-xl border border-zinc-200 bg-white p-3 text-sm shadow-lg dark:border-zinc-800 dark:bg-zinc-900">
-            <p className="font-medium text-zinc-900 dark:text-zinc-100">Notifications</p>
-            <p className="mt-1 text-zinc-500 dark:text-zinc-400">No notifications yet.</p>
+          <div className="absolute end-0 z-10 mt-2 w-56 rounded-xl border border-zinc-200 bg-white p-3 text-sm shadow-lg dark:border-zinc-800 dark:bg-zinc-900">
+            <p className="font-medium text-zinc-900 dark:text-zinc-100">{t("common.notifications")}</p>
+            <p className="mt-1 text-zinc-500 dark:text-zinc-400">{t("common.noNotifications")}</p>
           </div>
         ) : null}
       </div>

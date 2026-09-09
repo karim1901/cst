@@ -1,5 +1,16 @@
 import { Geist, Geist_Mono } from "next/font/google";
+import { cookies } from "next/headers";
+
 import "./globals.css";
+import { ThemeProvider } from "@/app/_components/theme/ThemeProvider";
+import { LocaleProvider } from "@/app/_components/i18n/LocaleProvider";
+import {
+  LOCALE_COOKIE,
+  THEME_COOKIE,
+  DEFAULT_LOCALE,
+  isValidLocale,
+  directionFor,
+} from "@/lib/i18n/constants";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -48,13 +59,32 @@ export const viewport = {
   viewportFit: "cover",
 };
 
-export default function RootLayout({ children }) {
+export default async function RootLayout({ children }) {
+  // Read theme/locale from cookies server-side — the ONE source of truth
+  // for both (see lib/i18n/constants.js's own comment) — so <html
+  // lang/dir/class="dark"> is already correct on the very first
+  // server-rendered byte. This is what prevents a flash of the wrong
+  // theme/direction on load or client-side navigation: ThemeProvider/
+  // LocaleProvider below are seeded from these exact same values, not
+  // re-derived client-side after mount.
+  const cookieStore = await cookies();
+  const localeCookie = cookieStore.get(LOCALE_COOKIE)?.value;
+  const locale = isValidLocale(localeCookie) ? localeCookie : DEFAULT_LOCALE;
+  const dir = directionFor(locale);
+  const themeCookie = cookieStore.get(THEME_COOKIE)?.value;
+  const theme = themeCookie === "dark" ? "dark" : themeCookie === "light" ? "light" : null;
+
   return (
     <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      lang={locale}
+      dir={dir}
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased ${theme === "dark" ? "dark" : ""}`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <ThemeProvider initialTheme={theme ?? "light"}>
+          <LocaleProvider initialLocale={locale}>{children}</LocaleProvider>
+        </ThemeProvider>
+      </body>
     </html>
   );
 }

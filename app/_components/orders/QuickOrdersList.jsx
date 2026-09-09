@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import StatusBadge from "@/app/_components/orders/StatusBadge";
 import MonthSelect from "@/app/_components/orders/MonthSelect";
 import AddToFollowUpButton from "@/app/_components/orders/AddToFollowUpButton";
 import { Spinner } from "@/app/_components/orders/shared";
@@ -11,16 +12,35 @@ import { SHIPPING_PROVIDERS } from "@/lib/shipping/providers";
 /**
  * Quick Livraison orders — fetched from our own backend
  * (`GET /api/orders/quick`). MongoDB is the source of truth for every
- * customer/order field here (Quick's API doesn't expose enough to
- * reconstruct that); Quick is only asked for each order's current live
- * status — see app/api/orders/quick/route.js. Never calls Quick from the
- * browser, and never scans tracking numbers to "discover" orders.
+ * customer/order field here; Quick is only asked for each order's current
+ * live status (see that route's own module comment). Never calls Quick from
+ * the browser.
  *
- * Unlike OzonOrdersList, this does NOT color-code status into
- * delivered/returned/... buckets: Quick's status vocabulary isn't
- * documented for this integration (see lib/quick/parse.js), so the raw
- * status text is shown as-is rather than guessing at a classification.
+ * The endpoint streams newline-delimited JSON (one order per line, as soon
+ * as it is confirmed — either a live-status refresh for the current month,
+ * or discovered+synced on the fly for a historical month) instead of one
+ * big JSON array — same shape/protocol as OzonOrdersList's own stream — so
+ * this component renders orders progressively rather than waiting for the
+ * whole month to finish. For a historical month, the backend also streams
+ * `{type:"progress"}` events (see the progress indicator below).
+ *
+ * Orders can arrive OUT of tracking-number order (concurrent batches don't
+ * resolve in strict sequence) — this re-sorts the list by tracking
+ * sequence, descending, on EVERY arrival (using `_numericCounter`, which
+ * the backend computes purely for this purpose), the same
+ * never-trust-arrival-order pattern OzonOrdersList.jsx already established
+ * for Ozon. Never sorted by `createdAt` or insertion order.
  */
+
+// Sort key: the numeric counter embedded in the tracking number (see
+// lib/quick/sync-order.js#numericCounterFromTrackingNumber, computed
+// server-side) — NOT `createdAt`, NOT arrival order, NOT MongoDB insertion
+// order. Same rationale as OzonOrdersList.jsx's own `trackingSortKey`.
+function trackingSortKey(order) {
+  const value = Number(order?._numericCounter);
+  return Number.isFinite(value) ? value : 0;
+}
+
 export default function QuickOrdersList({
   employeeId = null,
   period: controlledPeriod,
@@ -37,51 +57,123 @@ export default function QuickOrdersList({
   const isControlled = controlledPeriod !== undefined;
   const period = isControlled ? controlledPeriod : internalPeriod;
   const setPeriod = isControlled ? onPeriodChange : setInternalPeriod;
-  const [state, setState] = useState("loading"); // loading | ready | not-configured | error
-  const [errorMessage, setErrorMessage] = useState("");
+  const [state, setState] = useState("connecting"); // connecting | streaming | not-configured | fatal
+  const [fatalMessage, setFatalMessage] = useState("");
+  const [warning, setWarning] = useState("");
   const [orders, setOrders] = useState([]);
+  const [streamDone, setStreamDone] = useState(false);
+  // Historical-month-only progress ({checked, total, found}); `null` for
+  // the current month, which has no counter range to walk and so nothing
+  // to report progress on — see the route's own module comment.
+  const [progress, setProgress] = useState(null);
   const [search, setSearch] = useState(initialSearch);
 
-  // Reset per-fetch state when the selected month OR the viewed employee
-  // changes — done here, during render (React's recommended "adjust state
-  // when a value changes" pattern), rather than as setState calls at the
-  // top of the effect below, which trigger an avoidable extra cascading
-  // render.
+  // Reset per-fetch state when the selected month, employee, or status
+  // filter changes — done here, during render (React's recommended "adjust
+  // state when a value changes" pattern), same as OzonOrdersList.
   const resetKey = `${period}|${employeeId}|${status}`;
   const [renderedForKey, setRenderedForKey] = useState(resetKey);
   if (resetKey !== renderedForKey) {
     setRenderedForKey(resetKey);
-    setState("loading");
-    setErrorMessage("");
+    setState("connecting");
+    setFatalMessage("");
+    setWarning("");
+    setOrders([]);
+    setStreamDone(false);
+    setProgress(null);
   }
 
   useEffect(() => {
     const controller = new AbortController();
+    const seen = new Set(); // tracking numbers already added — never render a duplicate
 
-    const params = new URLSearchParams({ period });
-    if (employeeId) params.set("employeeId", employeeId);
-    if (status && status !== "all") params.set("status", status);
-
-    fetch(`/api/orders/quick?${params.toString()}`, { signal: controller.signal })
-      .then(async (res) => {
-        const data = await res.json().catch(() => ({}));
-        if (res.status === 409) {
-          setState("not-configured");
-          return;
-        }
-        if (!res.ok) {
-          setState("error");
-          setErrorMessage(data?.error || "Could not load orders.");
-          return;
-        }
-        setOrders(Array.isArray(data?.orders) ? data.orders : []);
-        setState("ready");
-      })
-      .catch((error) => {
+    async function run() {
+      let res;
+      try {
+        const params = new URLSearchParams({ period });
+        if (employeeId) params.set("employeeId", employeeId);
+        if (status && status !== "all") params.set("status", status);
+        res = await fetch(`/api/orders/quick?${params.toString()}`, {
+          signal: controller.signal,
+        });
+      } catch (error) {
         if (error?.name === "AbortError") return;
-        setState("error");
-        setErrorMessage("Could not load orders.");
-      });
+        setState("fatal");
+        setFatalMessage("Could not load orders.");
+        return;
+      }
+
+      if (res.status === 409) {
+        setState("not-configured");
+        return;
+      }
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => ({}));
+        setState("fatal");
+        setFatalMessage(data?.error || "Could not load orders.");
+        return;
+      }
+
+      setState("streaming");
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      try {
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          let newlineIndex = buffer.indexOf("\n");
+          while (newlineIndex !== -1) {
+            const line = buffer.slice(0, newlineIndex);
+            buffer = buffer.slice(newlineIndex + 1);
+            newlineIndex = buffer.indexOf("\n");
+
+            if (!line.trim()) continue;
+            let event;
+            try {
+              event = JSON.parse(line);
+            } catch {
+              continue; // one malformed line must not break the whole stream
+            }
+
+            if (event.type === "order") {
+              const trackingNumber = event.order?.trackingNumber;
+              if (trackingNumber) {
+                if (seen.has(trackingNumber)) continue;
+                seen.add(trackingNumber);
+              }
+              // Functional update + a full re-sort on each arrival — lists
+              // are small enough (bounded by the backend's own counter
+              // range) that this is cheap, and it guarantees correct final
+              // ordering no matter which order responses actually arrived
+              // in. Same pattern as OzonOrdersList.jsx.
+              setOrders((prev) => {
+                const next = [...prev, event.order];
+                next.sort((a, b) => trackingSortKey(b) - trackingSortKey(a));
+                return next;
+              });
+            } else if (event.type === "progress") {
+              setProgress({ checked: event.checked, total: event.total, found: event.found });
+            } else if (event.type === "error") {
+              // A soft, mid-stream problem — orders already shown stay put.
+              setWarning(event.message || "Some orders could not be loaded.");
+            }
+          }
+        }
+      } catch (error) {
+        if (error?.name !== "AbortError") {
+          setWarning("The connection was interrupted before all orders finished loading.");
+        }
+      } finally {
+        setStreamDone(true);
+      }
+    }
+
+    run();
 
     return () => controller.abort();
   }, [period, employeeId, status]);
@@ -92,7 +184,7 @@ export default function QuickOrdersList({
     return orders.filter((order) => String(order?.phone ?? "").includes(query));
   }, [orders, search]);
 
-  if (state === "loading") {
+  if (state === "connecting") {
     return (
       <div className="flex items-center justify-center gap-2 rounded-2xl border border-dashed border-zinc-300 px-6 py-14 text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
         <Spinner />
@@ -115,10 +207,10 @@ export default function QuickOrdersList({
     );
   }
 
-  if (state === "error") {
+  if (state === "fatal") {
     return (
       <div className="rounded-2xl border border-red-200 bg-red-50 px-6 py-10 text-center text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300">
-        {errorMessage}
+        {fatalMessage}
       </div>
     );
   }
@@ -127,7 +219,7 @@ export default function QuickOrdersList({
     <div>
       <div className="mb-4 flex flex-col gap-2 sm:flex-row">
         {!isControlled ? (
-          <MonthSelect value={period} onChange={setPeriod} disabled={state === "loading"} />
+          <MonthSelect value={period} onChange={setPeriod} disabled={!streamDone} />
         ) : null}
         <input
           type="search"
@@ -139,9 +231,28 @@ export default function QuickOrdersList({
         />
       </div>
 
+      {!streamDone ? (
+        <div className="mb-4 flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
+          <Spinner />
+          {progress
+            ? `Loading Quick orders… ${progress.checked} / ${progress.total} checked — ${progress.found} order${progress.found === 1 ? "" : "s"} found`
+            : orders.length > 0
+              ? `${orders.length} order${orders.length === 1 ? "" : "s"} loaded — loading more…`
+              : "Looking for orders…"}
+        </div>
+      ) : warning ? (
+        <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-300">
+          {warning}
+        </p>
+      ) : null}
+
       {visible.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-zinc-300 px-6 py-14 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
-          {orders.length === 0 ? "No orders yet." : "No orders match this phone number."}
+          {orders.length > 0
+            ? "No orders match this phone number."
+            : streamDone
+              ? "No orders yet."
+              : "Looking for orders…"}
         </p>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -171,7 +282,7 @@ function Row({ label, children }) {
 }
 
 function OrderCard({ order, isFollowedUp, onFollowUpAdded }) {
-  const statusLabel = order.statusUnavailable ? "Status unavailable" : order.status || "Unknown";
+  const statusLabel = order.statusUnavailable ? "Status unavailable" : order.status;
 
   return (
     <div className="w-full overflow-hidden rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
@@ -179,15 +290,13 @@ function OrderCard({ order, isFollowedUp, onFollowUpAdded }) {
         <span className="min-w-0 break-all font-mono text-sm text-zinc-700 dark:text-zinc-300">
           {order.trackingNumber}
         </span>
-        <span
-          className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-            order.statusUnavailable
-              ? "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300"
-              : "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
-          }`}
-        >
-          {statusLabel}
-        </span>
+        {order.statusUnavailable ? (
+          <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">
+            {statusLabel}
+          </span>
+        ) : (
+          <StatusBadge status={statusLabel} provider={SHIPPING_PROVIDERS.QUICK_LIVRAISON} />
+        )}
       </div>
 
       <div className="divide-y divide-zinc-100 dark:divide-zinc-800">

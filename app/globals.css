@@ -1,5 +1,17 @@
 @import "tailwindcss";
 
+/*
+ * Manual (class-based) dark mode instead of Tailwind v4 default
+ * OS-preference-only dark variant: a .dark class on the html element
+ * (toggled by ThemeToggle.jsx, persisted via a theme cookie read
+ * server-side in app/layout.js, so there is no flash-of-wrong-theme on
+ * load/navigation) now controls every existing dark: utility already used
+ * throughout this codebase. This is the ONLY change needed to make every
+ * one of those pre-existing dark: classes respond to a manual toggle
+ * instead of only the OS setting; nothing else had to change.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -12,15 +24,21 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+.dark {
+  --background: #0a0a0a;
+  --foreground: #ededed;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* RTL: logical-direction-aware document, so ms/me/ps/pe/text-start/text-end
+   utilities (used by the global header/sidebar RTL work) flip correctly.
+   Nothing else needs a mirrored stylesheet; Tailwind logical properties
+   already handle it once `dir` is correct on the html element. */
+[dir="rtl"] {
+  text-align: start;
 }

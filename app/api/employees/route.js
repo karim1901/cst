@@ -5,7 +5,10 @@ import User, { USER_ROLES } from "@/models/User";
 import { employeeCreateSchema, fieldErrorsOf } from "@/lib/validation/auth";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { listEmployeesForMerchant, toEmployeeSummary } from "@/lib/employees";
-import { syncHistoricalOzonOrders } from "@/lib/commission/sync-historical-orders";
+import {
+  syncHistoricalOzonOrders,
+  syncHistoricalQuickOrders,
+} from "@/lib/commission/sync-historical-orders";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -131,16 +134,24 @@ export async function POST(request) {
   }
 
   // Fire-and-forget, never awaited: a brand-new employee may already have
-  // real, delivered Ozon orders that predate joining cst (created directly
-  // at Ozon or through an older tool) — see
+  // real, delivered Ozon/Quick orders that predate joining cst (created
+  // directly at the provider or through an older tool) — see
   // lib/commission/sync-historical-orders.js's module comment for why
   // those would otherwise be permanently invisible to commission. This
   // never blocks or can fail the employee-creation response; any error is
-  // only ever logged. Runs generically for every new employee — nothing
-  // here is specific to any one username.
+  // only ever logged. Runs generically for every new employee, on BOTH
+  // providers — nothing here is specific to any one username or provider.
   syncHistoricalOzonOrders(String(employee._id)).catch((err) => {
     console.error(
       "[POST /api/employees] historical Ozon sync failed for",
+      employee.username,
+      "-",
+      err?.message
+    );
+  });
+  syncHistoricalQuickOrders(String(employee._id)).catch((err) => {
+    console.error(
+      "[POST /api/employees] historical Quick sync failed for",
       employee.username,
       "-",
       err?.message

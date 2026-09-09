@@ -1,8 +1,11 @@
+"use client";
+
+import { useLocale } from "@/app/_components/i18n/LocaleProvider";
+
 /**
  * Green/red donut showing the Livré vs. Retour split. Plain SVG + a little
  * geometry — no charting library, since two arcs is well within what SVG
- * handles on its own. Pure presentational (no state, no client JS needed),
- * so it renders on the server like the rest of the dashboard.
+ * handles on its own.
  *
  * Colors reuse the same semantic emerald/red already used by
  * app/_components/orders/StatusBadge.jsx (green = delivered, red =
@@ -15,13 +18,14 @@ const RADIUS = (SIZE - STROKE) / 2;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
 export default function DeliveryProgressRing({ delivered, returned }) {
+  const { t } = useLocale();
   const resolved = delivered + returned;
 
   if (resolved === 0) {
     return (
       <div
         role="img"
-        aria-label="No delivered or returned orders yet"
+        aria-label={t("dashboard.noData")}
         className="relative mx-auto flex h-40 w-40 items-center justify-center"
       >
         <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} className="-rotate-90">
@@ -35,7 +39,7 @@ export default function DeliveryProgressRing({ delivered, returned }) {
           />
         </svg>
         <span className="absolute text-xs font-medium text-zinc-400 dark:text-zinc-500">
-          No data yet
+          {t("dashboard.noData")}
         </span>
       </div>
     );
@@ -90,7 +94,7 @@ export default function DeliveryProgressRing({ delivered, returned }) {
         <span className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
           {deliveredPercent}%
         </span>
-        <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Livré</span>
+        <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">{t("dashboard.delivered")}</span>
       </div>
     </div>
   );

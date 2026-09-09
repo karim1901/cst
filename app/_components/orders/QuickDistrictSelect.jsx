@@ -12,7 +12,34 @@ import { FIELD, LABEL } from "@/app/_components/orders/shared";
  * `/api/orders/quick/cities` proxy (never Quick directly). Mirrors
  * OzonCitySelect.jsx; kept as its own component since the two providers'
  * city lists/ids are unrelated to each other.
+ *
+ * `citiesCache` (module scope, below) caches the resolved list — cities are
+ * effectively static reference data, so re-mounting this component (e.g.
+ * navigating away from and back to the order form) reuses it instead of
+ * re-requesting `/api/orders/quick/cities` every time. Quick-specific
+ * (OzonCitySelect is left exactly as it was): scoped this way per this
+ * feature's own "adapt only what's specific to Quick Livraison" rule.
  */
+
+let citiesCache = null;
+
+function loadQuickCities() {
+  if (!citiesCache) {
+    citiesCache = fetch("/api/orders/quick/cities")
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to load cities.");
+        return res.json();
+      })
+      .then((data) => (Array.isArray(data?.cities) ? data.cities : []))
+      .catch((error) => {
+        // Don't cache a failure — the next mount gets a fresh attempt
+        // instead of being stuck with a rejected promise forever.
+        citiesCache = null;
+        throw error;
+      });
+  }
+  return citiesCache;
+}
 export default function QuickDistrictSelect({
   id = "city",
   name = "city",
@@ -28,21 +55,25 @@ export default function QuickDistrictSelect({
   const containerRef = useRef(null);
 
   useEffect(() => {
-    const controller = new AbortController();
-    fetch("/api/orders/quick/cities", { signal: controller.signal })
-      .then((res) => {
-        if (!res.ok) throw new Error("Failed to load cities.");
-        return res.json();
-      })
-      .then((data) => {
-        setCities(Array.isArray(data?.cities) ? data.cities : []);
+    // Not tied to an AbortController: the underlying request is shared
+    // (module-level `citiesCache`) across every mounted instance of this
+    // component, so aborting it here would break any other instance still
+    // awaiting the same in-flight request. A `cancelled` flag instead just
+    // skips the setState if this particular instance unmounts first.
+    let cancelled = false;
+    loadQuickCities()
+      .then((cities) => {
+        if (cancelled) return;
+        setCities(cities);
         setLoadState("ready");
       })
-      .catch((error) => {
-        if (error?.name === "AbortError") return;
+      .catch(() => {
+        if (cancelled) return;
         setLoadState("error");
       });
-    return () => controller.abort();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const filtered = useMemo(() => {

@@ -3,22 +3,18 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 
+import ProviderTabs from "@/app/_components/orders/ProviderTabs";
 import ReturnsFilters from "@/app/_components/returns/ReturnsFilters";
 import DeliveredFilters from "@/app/_components/returns/DeliveredFilters";
 import MonthSelect from "@/app/_components/orders/MonthSelect";
 import StatusBadge from "@/app/_components/orders/StatusBadge";
 import { Spinner, ErrorBanner } from "@/app/_components/orders/shared";
+import { useLocale } from "@/app/_components/i18n/LocaleProvider";
 import { SHIPPING_PROVIDERS } from "@/lib/shipping/providers";
 import {
   ORDER_LIFECYCLE_SECTIONS,
   ORDER_LIFECYCLE_SECTION_VALUES,
-  ORDER_LIFECYCLE_SECTION_LABELS,
 } from "@/lib/returns/constants";
-
-const PROVIDER_LABEL = {
-  ozon_express: "Ozon Express",
-  quick_livraison: "Quick Livraison",
-};
 
 const dateTimeFormatter = new Intl.DateTimeFormat("en-GB", {
   day: "2-digit",
@@ -30,10 +26,16 @@ const dateTimeFormatter = new Intl.DateTimeFormat("en-GB", {
 
 const PAGE_SIZE = 20;
 
-const EMPTY_MESSAGE = {
-  all: "No orders found",
-  delivered: "No delivered orders found",
-  returns: "No returns found",
+const SECTION_LABEL_KEY = {
+  all: "returns.sectionAll",
+  delivered: "returns.sectionDelivered",
+  returns: "returns.sectionReturns",
+};
+
+const EMPTY_MESSAGE_KEY = {
+  all: "returns.emptyAll",
+  delivered: "returns.emptyDelivered",
+  returns: "returns.emptyReturns",
 };
 
 /**
@@ -70,6 +72,12 @@ const EMPTY_MESSAGE = {
  * provider sync.
  */
 export default function ReturnsList({ employees }) {
+  const { t } = useLocale();
+  // Provider separation (item 1/6) — Ozon and Quick returns/deliveries are
+  // never combined; switching this re-fetches an entirely separate,
+  // provider-scoped query (see app/api/returns/route.js), never a
+  // frontend-only filter of an already-combined dataset.
+  const [provider, setProvider] = useState(SHIPPING_PROVIDERS.OZON_EXPRESS);
   const [section, setSection] = useState(ORDER_LIFECYCLE_SECTIONS.ALL);
 
   // All-section-only filter: which month, by the SAME tracking-number-
@@ -112,7 +120,7 @@ export default function ReturnsList({ employees }) {
   // adjusted during render (not a synchronous setState inside the fetch
   // effect), same pattern already used by OrdersBrowser.jsx/SidebarNav.jsx
   // in this app.
-  const filterKey = `${section}|${period}|${shippingStatus}|${validation}|${employeeId}|${deliveryDate}|${customDate}|${customStart}|${customEnd}`;
+  const filterKey = `${provider}|${section}|${period}|${shippingStatus}|${validation}|${employeeId}|${deliveryDate}|${customDate}|${customStart}|${customEnd}`;
   const [renderedForFilterKey, setRenderedForFilterKey] = useState(filterKey);
   if (filterKey !== renderedForFilterKey) {
     setRenderedForFilterKey(filterKey);
@@ -129,6 +137,7 @@ export default function ReturnsList({ employees }) {
   const load = useCallback(
     (signal) => {
       const params = new URLSearchParams({
+        provider,
         section,
         page: String(page),
         pageSize: String(PAGE_SIZE),
@@ -153,7 +162,19 @@ export default function ReturnsList({ employees }) {
         return body;
       });
     },
-    [section, period, shippingStatus, validation, employeeId, deliveryDate, customDate, customStart, customEnd, page]
+    [
+      provider,
+      section,
+      period,
+      shippingStatus,
+      validation,
+      employeeId,
+      deliveryDate,
+      customDate,
+      customStart,
+      customEnd,
+      page,
+    ]
   );
 
   useEffect(() => {
@@ -221,7 +242,7 @@ export default function ReturnsList({ employees }) {
   // buttons on All/Delivered — these handlers are simply never reachable
   // from those sections' cards).
   async function handleValidate(id) {
-    if (!window.confirm("Confirm you have physically received this returned package?")) return;
+    if (!window.confirm(t("returns.confirmValidate"))) return;
     setPendingIds((current) => new Set(current).add(id));
     try {
       const res = await fetch(`/api/returns/${id}/validate`, { method: "POST" });
@@ -243,7 +264,7 @@ export default function ReturnsList({ employees }) {
   }
 
   async function handleUnvalidate(id) {
-    if (!window.confirm("Mark this return as pending again?")) return;
+    if (!window.confirm(t("returns.confirmUnvalidate"))) return;
     setPendingIds((current) => new Set(current).add(id));
     try {
       const res = await fetch(`/api/returns/${id}/unvalidate`, { method: "POST" });
@@ -268,6 +289,10 @@ export default function ReturnsList({ employees }) {
 
   return (
     <div>
+      <div className="mb-4">
+        <ProviderTabs value={provider} onChange={setProvider} />
+      </div>
+
       <div
         role="tablist"
         aria-label="Order section"
@@ -288,7 +313,7 @@ export default function ReturnsList({ employees }) {
                   : "text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
               }`}
             >
-              {ORDER_LIFECYCLE_SECTION_LABELS[value]} ({counts[value] ?? 0})
+              {t(SECTION_LABEL_KEY[value])} ({counts[value] ?? 0})
             </button>
           );
         })}
@@ -297,7 +322,7 @@ export default function ReturnsList({ employees }) {
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         {section === ORDER_LIFECYCLE_SECTIONS.ALL ? (
           <div className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Month</span>
+            <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">{t("common.month")}</span>
             <MonthSelect value={period} onChange={setPeriod} allowAll />
           </div>
         ) : section === ORDER_LIFECYCLE_SECTIONS.RETURNS ? (
@@ -329,20 +354,20 @@ export default function ReturnsList({ employees }) {
           className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
         >
           {syncing ? <Spinner /> : null}
-          {syncing ? "Syncing…" : "Sync now"}
+          {syncing ? t("returns.syncing") : t("returns.syncNow")}
         </button>
       </div>
 
       {state === "loading" ? (
         <div className="flex items-center justify-center gap-2 rounded-2xl border border-dashed border-zinc-300 px-6 py-14 text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
           <Spinner />
-          Loading...
+          {t("common.loading")}
         </div>
       ) : state === "error" ? (
         <ErrorBanner>{errorMessage}</ErrorBanner>
       ) : data.returns.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-zinc-300 px-6 py-14 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
-          {EMPTY_MESSAGE[section] ?? "No orders found"}
+          {t(EMPTY_MESSAGE_KEY[section] ?? "returns.emptyAll")}
         </p>
       ) : (
         <>
@@ -367,10 +392,11 @@ export default function ReturnsList({ employees }) {
                 disabled={page <= 1}
                 className="rounded-lg border border-zinc-300 px-3 py-1.5 font-medium text-zinc-700 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-200"
               >
-                ← Previous
+                {t("common.previous")}
               </button>
               <span className="text-zinc-500 dark:text-zinc-400">
-                Page {data.page} of {data.totalPages} · {data.total} order{data.total === 1 ? "" : "s"}
+                {t("common.page")} {data.page} {t("common.of")} {data.totalPages} · {data.total}{" "}
+                {data.total === 1 ? t("common.order") : t("common.orders")}
               </span>
               <button
                 type="button"
@@ -378,7 +404,7 @@ export default function ReturnsList({ employees }) {
                 disabled={page >= data.totalPages}
                 className="rounded-lg border border-zinc-300 px-3 py-1.5 font-medium text-zinc-700 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-200"
               >
-                Next →
+                {t("common.next")}
               </button>
             </div>
           ) : null}
@@ -398,7 +424,8 @@ function Row({ label, children }) {
 }
 
 function ReturnCard({ item, section, pending, onValidate, onUnvalidate }) {
-  const providerLabel = PROVIDER_LABEL[item.provider] ?? item.provider;
+  const { t } = useLocale();
+  const providerLabel = t(`providers.${item.provider}`);
   const isValidated = item.returnValidationStatus === "validated";
   // "Validate Return"/"Mark as Pending" and the Pending/Validated badge are
   // ONLY ever shown for the Returns section — an order in All/Delivered
@@ -443,7 +470,7 @@ function ReturnCard({ item, section, pending, onValidate, onUnvalidate }) {
                   : "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300"
               }`}
             >
-              {isValidated ? "Validated" : "Pending"}
+              {isValidated ? t("returns.validated") : t("returns.pending")}
             </span>
           ) : null}
         </div>
@@ -476,7 +503,7 @@ function ReturnCard({ item, section, pending, onValidate, onUnvalidate }) {
           href={openOrderHref}
           className="rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
         >
-          Open Order
+          {t("returns.openOrder")}
         </Link>
         {isReturnsSection ? (
           isValidated ? (
@@ -486,7 +513,7 @@ function ReturnCard({ item, section, pending, onValidate, onUnvalidate }) {
               disabled={pending}
               className="rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
             >
-              Mark as Pending
+              {t("returns.markAsPending")}
             </button>
           ) : (
             <button
@@ -495,7 +522,7 @@ function ReturnCard({ item, section, pending, onValidate, onUnvalidate }) {
               disabled={pending}
               className="rounded-lg border border-emerald-300 px-3 py-1.5 text-xs font-medium text-emerald-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
             >
-              {pending ? "Validating…" : "Validate Return"}
+              {pending ? t("returns.validating") : t("returns.validateReturn")}
             </button>
           )
         ) : null}

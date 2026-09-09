@@ -7,7 +7,14 @@ import { usePathname } from "next/navigation";
 import LogoutButton from "@/app/_components/LogoutButton";
 import ImpersonationBanner from "@/app/_components/ImpersonationBanner";
 import MobileBottomNav from "@/app/_components/MobileBottomNav";
-import { roleLabel } from "@/lib/auth/roles";
+import ThemeToggle from "@/app/_components/theme/ThemeToggle";
+import LanguageSwitcher from "@/app/_components/i18n/LanguageSwitcher";
+import { useLocale } from "@/app/_components/i18n/LocaleProvider";
+const ROLE_KEY = {
+  super_admin: "common.roleSuperAdmin",
+  merchant: "common.roleMerchant",
+  employee: "common.roleEmployee",
+};
 
 // One small icon per line, no icon library — kept consistent with the
 // existing hamburger icon's own style (stroke, currentColor, 1.75 weight).
@@ -67,29 +74,33 @@ const ICONS = {
 
 // Order matters: MobileBottomNav takes the first few of these for its
 // permanent tabs — put the sections worth a thumb-reach slot first.
-function navItemsFor(role) {
-  const items = [{ href: "/dashboard", label: "Dashboard", icon: ICONS.dashboard }];
+function navItemsFor(role, t) {
+  const items = [{ href: "/dashboard", label: t("nav.dashboard"), icon: ICONS.dashboard }];
   if (role === "merchant" || role === "employee") {
-    items.push({ href: "/dashboard/orders", label: "Orders", icon: ICONS.orders });
-    items.push({ href: "/dashboard/commission", label: "Commission", icon: ICONS.commission });
+    items.push({ href: "/dashboard/orders", label: t("nav.orders"), icon: ICONS.orders });
+    items.push({ href: "/dashboard/commission", label: t("nav.commission"), icon: ICONS.commission });
   }
   if (role === "merchant") {
     // Follow-up is a merchant-only manual follow-up list layered on top of
     // Orders (see app/api/order-followups/route.js's module comment) —
     // never shown to employees or super admins.
-    items.push({ href: "/dashboard/track", label: "Follow-up", icon: ICONS.track });
+    items.push({ href: "/dashboard/track", label: t("nav.followUp"), icon: ICONS.track });
     // Returns — internal management of cancelled/refused/returned orders,
     // deliberately separate from Follow-up (see app/_components/returns/
     // ReturnsList.jsx's module comment for why). Merchant-only for the same
     // reason Follow-up is: it's a merchant-side internal workflow, not
     // something an employee acts on directly.
-    items.push({ href: "/dashboard/returns", label: "Returns", icon: ICONS.returns });
-    items.push({ href: "/dashboard/employees", label: "Employees", icon: ICONS.employees });
-    items.push({ href: "/dashboard/shipping-companies", label: "Shipping Companies", icon: ICONS.shipping });
+    items.push({ href: "/dashboard/returns", label: t("nav.returns"), icon: ICONS.returns });
+    items.push({ href: "/dashboard/employees", label: t("nav.employees"), icon: ICONS.employees });
+    items.push({
+      href: "/dashboard/shipping-companies",
+      label: t("nav.shippingCompanies"),
+      icon: ICONS.shipping,
+    });
   }
   // Every role gets Settings — including super_admin, who otherwise has no
   // nav items besides Dashboard.
-  items.push({ href: "/dashboard/settings", label: "Settings", icon: ICONS.settings });
+  items.push({ href: "/dashboard/settings", label: t("nav.settings"), icon: ICONS.settings });
   return items;
 }
 
@@ -124,8 +135,9 @@ function NavLinks({ items, pathname, onNavigate }) {
 
 export default function SidebarNav({ user, children }) {
   const pathname = usePathname();
+  const { t, dir } = useLocale();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const items = navItemsFor(user.role);
+  const items = navItemsFor(user.role, t);
 
   // Close automatically on navigation (Link's own onClick below covers a
   // tap on a nav item, but not e.g. the browser back/forward buttons) —
@@ -177,44 +189,68 @@ export default function SidebarNav({ user, children }) {
             {user.name}
           </p>
           <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
-            {roleLabel(user.role)}
+            {t(ROLE_KEY[user.role] ?? "common.roleEmployee")}
           </p>
+          <div className="mb-3 flex items-center gap-2">
+            <ThemeToggle />
+            <LanguageSwitcher />
+          </div>
           <LogoutButton />
         </div>
       </aside>
 
-      {/* Mobile top bar — sticky so navigation stays reachable on long pages.
-          Only the toggle button lives here now; the drawer itself is NOT
-          nested inside this bar (that was the bug — an in-flow panel that
-          pushed the page content down instead of overlaying it). */}
+      {/* Mobile GLOBAL header — sticky, always rendered (not inside the
+          collapsible drawer below), so the authenticated user's identity,
+          Logout, theme, and language stay visible/reachable on every
+          authenticated page on mobile without opening the menu. This is
+          the actual fix for "name/logout disappear off the Dashboard": the
+          desktop sidebar's footer (above) already persisted across every
+          /dashboard/* route the whole time (this component IS the shared
+          layout every nested page renders through — see
+          app/dashboard/layout.jsx) — the real gap was mobile, where those
+          same elements previously lived ONLY inside the collapsed-by-
+          default drawer. */}
       <div className="sticky top-0 z-20 border-b border-zinc-200 bg-zinc-50/95 backdrop-blur md:hidden dark:border-zinc-800 dark:bg-black/95">
-        <div className="flex items-center justify-between px-4 py-3">
-          <span className="text-sm font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-            CST
-          </span>
-          <button
-            type="button"
-            onClick={() => setMobileOpen((open) => !open)}
-            aria-expanded={mobileOpen}
-            aria-controls="mobile-nav"
-            className="grid h-11 w-11 place-items-center rounded-lg border border-zinc-300 text-zinc-700 active:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:active:bg-zinc-800"
-          >
-            <span className="sr-only">Toggle menu</span>
-            <svg
+        <div className="flex items-center justify-between gap-2 px-3 py-2.5">
+          <div className="flex min-w-0 items-center gap-2">
+            <span
               aria-hidden="true"
-              viewBox="0 0 20 20"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.75"
-              className="h-5 w-5"
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-zinc-900 text-xs font-semibold text-white dark:bg-white dark:text-black"
             >
-              {mobileOpen ? (
-                <path strokeLinecap="round" d="M5 5l10 10M15 5 5 15" />
-              ) : (
-                <path strokeLinecap="round" d="M3 5h14M3 10h14M3 15h14" />
-              )}
-            </svg>
-          </button>
+              {(user.name || "?").trim().charAt(0).toUpperCase()}
+            </span>
+            <span className="min-w-0 truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">
+              {user.name}
+            </span>
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <ThemeToggle className="h-9 w-9" />
+            <LanguageSwitcher className="h-9 w-9" />
+            <LogoutButton compact />
+            <button
+              type="button"
+              onClick={() => setMobileOpen((open) => !open)}
+              aria-expanded={mobileOpen}
+              aria-controls="mobile-nav"
+              className="grid h-9 w-9 place-items-center rounded-lg border border-zinc-300 text-zinc-700 active:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:active:bg-zinc-800"
+            >
+              <span className="sr-only">{t("common.openMenu")}</span>
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 20 20"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.75"
+                className="h-5 w-5"
+              >
+                {mobileOpen ? (
+                  <path strokeLinecap="round" d="M5 5l10 10M15 5 5 15" />
+                ) : (
+                  <path strokeLinecap="round" d="M3 5h14M3 10h14M3 15h14" />
+                )}
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -241,9 +277,9 @@ export default function SidebarNav({ user, children }) {
           the source of horizontal overflow. */}
       <aside
         id="mobile-nav"
-        aria-label="Menu"
-        className={`fixed inset-y-0 left-0 z-40 flex h-dvh w-72 max-w-[85vw] flex-col border-r border-zinc-200 bg-zinc-50 shadow-xl transition-transform duration-200 ease-out md:hidden dark:border-zinc-800 dark:bg-black ${
-          mobileOpen ? "translate-x-0" : "-translate-x-full"
+        aria-label={t("common.openMenu")}
+        className={`fixed inset-y-0 start-0 z-40 flex h-dvh w-72 max-w-[85vw] flex-col border-e border-zinc-200 bg-zinc-50 shadow-xl transition-transform duration-200 ease-out md:hidden dark:border-zinc-800 dark:bg-black ${
+          mobileOpen ? "translate-x-0" : dir === "rtl" ? "translate-x-full" : "-translate-x-full"
         }`}
       >
         <div className="flex items-center justify-between px-5 py-5">
@@ -253,7 +289,7 @@ export default function SidebarNav({ user, children }) {
           <button
             type="button"
             onClick={() => setMobileOpen(false)}
-            aria-label="Close menu"
+            aria-label={t("common.closeMenu")}
             className="grid h-9 w-9 place-items-center rounded-lg text-zinc-500 active:bg-zinc-100 dark:text-zinc-400 dark:active:bg-zinc-800"
           >
             <svg
@@ -282,7 +318,7 @@ export default function SidebarNav({ user, children }) {
             {user.name}
           </p>
           <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
-            {roleLabel(user.role)}
+            {t(ROLE_KEY[user.role] ?? "common.roleEmployee")}
           </p>
           <LogoutButton />
         </div>

@@ -32,6 +32,18 @@ const PROVIDER_LABEL = {
   quick_livraison: "Quick Livraison",
 };
 
+// Compact "Ozon 5 · Quick 3" breakdown — provider transparency (item 10),
+// purely a DISPLAY drill-down of the already-computed, unchanged commission
+// numbers (lib/commission/report.js's `ordersByProvider` — additive only,
+// never a second commission calculation).
+function providerBreakdown(ordersByProvider) {
+  if (!ordersByProvider) return null;
+  const parts = Object.entries(ordersByProvider)
+    .filter(([, count]) => count > 0)
+    .map(([provider, count]) => `${PROVIDER_LABEL[provider] ?? provider} ${count}`);
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
 /** "202608" -> "August 2026" — display only, shown on each mobile card so the selected month reads on its own without scrolling back up to the picker. */
 function periodLabel(period) {
   const year = Number(period.slice(0, 4));
@@ -227,6 +239,11 @@ function EmployeeCard({ employee, period, expanded, onToggle }) {
         <>
           <div className="divide-y divide-zinc-100 border-t border-zinc-100 px-4 dark:divide-zinc-800/80 dark:border-zinc-800">
             <StatRow label="Delivered" value={employee.deliveredOrders} />
+            {providerBreakdown(employee.ordersByProvider) ? (
+              <p className="py-1 text-xs text-zinc-400 dark:text-zinc-500">
+                {providerBreakdown(employee.ordersByProvider)}
+              </p>
+            ) : null}
             <StatRow label="Units" value={employee.commissionUnits} />
             <StatRow label="Threshold" value={employee.threshold} />
             <StatRow label="Rate" value={money(employee.commissionRate)} />
@@ -315,6 +332,11 @@ function EmployeeRows({ employee, expanded, onToggle }) {
         </td>
         <td className="px-4 py-3 text-right tabular-nums text-zinc-700 dark:text-zinc-300">
           {employee.deliveredOrders}
+          {providerBreakdown(employee.ordersByProvider) ? (
+            <span className="block text-[11px] font-normal text-zinc-400 dark:text-zinc-500">
+              {providerBreakdown(employee.ordersByProvider)}
+            </span>
+          ) : null}
         </td>
         <td className="px-4 py-3 text-right tabular-nums text-zinc-700 dark:text-zinc-300">
           {employee.commissionUnits}

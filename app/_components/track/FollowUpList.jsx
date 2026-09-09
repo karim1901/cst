@@ -5,13 +5,10 @@ import Link from "next/link";
 
 import NoteModal from "@/app/_components/orders/NoteModal";
 import StatusBadge from "@/app/_components/orders/StatusBadge";
+import ProviderTabs from "@/app/_components/orders/ProviderTabs";
 import { Spinner, ErrorBanner } from "@/app/_components/orders/shared";
+import { useLocale } from "@/app/_components/i18n/LocaleProvider";
 import { SHIPPING_PROVIDERS } from "@/lib/shipping/providers";
-
-const PROVIDER_LABEL = {
-  ozon_express: "Ozon Express",
-  quick_livraison: "Quick Livraison",
-};
 
 /**
  * Follow-up — the merchant's own manual reminder list, entirely
@@ -20,16 +17,35 @@ const PROVIDER_LABEL = {
  * actions right on the page. Reads/writes GET|POST /api/order-followups and
  * PATCH|DELETE /api/order-followups/[id] — see those routes' own comments
  * for the security model (merchant-only, ownership-scoped, IDOR-safe).
+ *
+ * PROVIDER SEPARATION (item 9): a follow-up item's `provider` is inherited
+ * from its original Order at the moment it was added (see
+ * models/OrderFollowUp.js) — never re-derived, never duplicated. The
+ * ProviderTabs below re-fetches an entirely separate, provider-scoped
+ * query (GET /api/order-followups?provider=...) rather than filtering an
+ * already-fetched combined list in the browser.
  */
 export default function FollowUpList() {
+  const { t } = useLocale();
+  const [provider, setProvider] = useState(SHIPPING_PROVIDERS.OZON_EXPRESS);
   const [state, setState] = useState("loading"); // loading | ready | error
   const [errorMessage, setErrorMessage] = useState("");
   const [items, setItems] = useState([]);
   const [editingId, setEditingId] = useState(null);
 
+  // Reset to "loading" when the provider changes — adjusted during render
+  // (React's recommended pattern), not a synchronous setState at the top
+  // of the effect below — same fix already applied throughout this app
+  // (ReturnsList.jsx, DashboardStats.jsx, ...).
+  const [renderedForProvider, setRenderedForProvider] = useState(provider);
+  if (provider !== renderedForProvider) {
+    setRenderedForProvider(provider);
+    setState("loading");
+  }
+
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/api/order-followups", { signal: controller.signal })
+    fetch(`/api/order-followups?provider=${provider}`, { signal: controller.signal })
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data?.error || "Could not load your follow-up list.");
@@ -42,7 +58,7 @@ export default function FollowUpList() {
         setState("error");
       });
     return () => controller.abort();
-  }, []);
+  }, [provider]);
 
   async function handleSaveNote(id, note) {
     const res = await fetch(`/api/order-followups/${id}`, {
@@ -59,7 +75,7 @@ export default function FollowUpList() {
   }
 
   async function handleDelete(id) {
-    if (!window.confirm("Remove this order from Follow-up?")) return;
+    if (!window.confirm(t("followUp.confirmRemove"))) return;
     // Optimistic — the request below is the real source of truth; a
     // failure restores the item so the UI never silently disagrees with
     // the server. Deleting here ONLY ever removes the OrderFollowUp
@@ -78,42 +94,40 @@ export default function FollowUpList() {
     }
   }
 
-  if (state === "loading") {
-    return (
-      <div className="flex items-center justify-center gap-2 rounded-2xl border border-dashed border-zinc-300 px-6 py-14 text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
-        <Spinner />
-        Loading…
-      </div>
-    );
-  }
-
-  if (state === "error") {
-    return <ErrorBanner>{errorMessage}</ErrorBanner>;
-  }
-
-  if (items.length === 0) {
-    return (
-      <p className="rounded-2xl border border-dashed border-zinc-300 px-6 py-14 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
-        No orders in Follow-up
-      </p>
-    );
-  }
-
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-      {items.map((item) => (
-        <FollowUpCard
-          key={item.id}
-          item={item}
-          onEdit={() => setEditingId(item.id)}
-          onDelete={() => handleDelete(item.id)}
-        />
-      ))}
+    <div>
+      <div className="mb-4">
+        <ProviderTabs value={provider} onChange={setProvider} />
+      </div>
+
+      {state === "loading" ? (
+        <div className="flex items-center justify-center gap-2 rounded-2xl border border-dashed border-zinc-300 px-6 py-14 text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
+          <Spinner />
+          {t("common.loading")}
+        </div>
+      ) : state === "error" ? (
+        <ErrorBanner>{errorMessage}</ErrorBanner>
+      ) : items.length === 0 ? (
+        <p className="rounded-2xl border border-dashed border-zinc-300 px-6 py-14 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
+          {t("followUp.empty")}
+        </p>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {items.map((item) => (
+            <FollowUpCard
+              key={item.id}
+              item={item}
+              onEdit={() => setEditingId(item.id)}
+              onDelete={() => handleDelete(item.id)}
+            />
+          ))}
+        </div>
+      )}
 
       {editingId ? (
         <NoteModal
-          title="Edit Follow-up"
-          saveLabel="Save Changes"
+          title={t("followUp.editTitle")}
+          saveLabel={t("followUp.saveChanges")}
           initialNote={items.find((item) => item.id === editingId)?.note ?? ""}
           onSave={(note) => handleSaveNote(editingId, note)}
           onClose={() => setEditingId(null)}
@@ -139,8 +153,9 @@ function Row({ label, children }) {
 }
 
 function FollowUpCard({ item, onEdit, onDelete }) {
+  const { t } = useLocale();
   const order = item.order;
-  const providerLabel = PROVIDER_LABEL[item.provider] ?? item.provider;
+  const providerLabel = t(`providers.${item.provider}`);
 
   // "Open Order" reuses the Orders page's own existing provider/employee/
   // phone-search filters (see app/_components/orders/OrdersPageClient.jsx)
@@ -199,21 +214,21 @@ function FollowUpCard({ item, onEdit, onDelete }) {
           href={openOrderHref}
           className="rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
         >
-          Open Order
+          {t("followUp.openOrder")}
         </Link>
         <button
           type="button"
           onClick={onEdit}
           className="rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
         >
-          Edit Follow-up
+          {t("followUp.editFollowUp")}
         </button>
         <button
           type="button"
           onClick={onDelete}
           className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 transition hover:bg-red-50 dark:border-red-900/50 dark:text-red-300 dark:hover:bg-red-950/40"
         >
-          Remove from Follow-up
+          {t("followUp.removeFollowUp")}
         </button>
       </div>
     </div>
