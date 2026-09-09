@@ -2,6 +2,7 @@
 
 import DeliveryProgressRing from "@/app/_components/dashboard/DeliveryProgressRing";
 import { useLocale } from "@/app/_components/i18n/LocaleProvider";
+import { STATUS_FILTER_LABELS } from "@/lib/orders/status-groups";
 
 const CARD =
   "rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900";
@@ -74,10 +75,13 @@ export default function StatsCards({ stats }) {
   return (
     <section className="mb-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <CountCard label={t("dashboard.totalOrders")} value={totalOrders} tone="zinc" icon={TOTAL_ICON} />
-      <CountCard label={t("dashboard.delivered")} value={delivered} tone="emerald" icon={DELIVERED_ICON} />
-      <CountCard label={t("dashboard.returned")} value={returned} tone="red" icon={RETURN_ICON} />
+      {/* "Livré"/"Retour"/"Progress" — from the ONE source of truth
+          (lib/orders/status-groups.js#STATUS_FILTER_LABELS), never i18n —
+          see that constant's own comment. */}
+      <CountCard label={STATUS_FILTER_LABELS.delivered} value={delivered} tone="emerald" icon={DELIVERED_ICON} />
+      <CountCard label={STATUS_FILTER_LABELS.return} value={returned} tone="red" icon={RETURN_ICON} />
       <CountCard
-        label={t("dashboard.progress")}
+        label={STATUS_FILTER_LABELS.progress}
         value={Math.max(0, inProgress ?? 0)}
         tone="amber"
         icon={PROGRESS_ICON}
@@ -85,7 +89,7 @@ export default function StatsCards({ stats }) {
 
       <div className={`${CARD} sm:col-span-2 lg:col-span-4`}>
         <p className="mb-3 text-sm font-medium text-zinc-500 dark:text-zinc-400">
-          {t("dashboard.progress")}
+          {STATUS_FILTER_LABELS.progress}
         </p>
         <DeliveryProgressRing delivered={delivered} returned={returned} />
         <p className="mt-3 text-center text-xs text-zinc-400 dark:text-zinc-500">

@@ -11,6 +11,7 @@ import StatusBadge from "@/app/_components/orders/StatusBadge";
 import { Spinner, ErrorBanner } from "@/app/_components/orders/shared";
 import { useLocale } from "@/app/_components/i18n/LocaleProvider";
 import { SHIPPING_PROVIDERS } from "@/lib/shipping/providers";
+import { STATUS_FILTER_LABELS } from "@/lib/orders/status-groups";
 import {
   ORDER_LIFECYCLE_SECTIONS,
   ORDER_LIFECYCLE_SECTION_VALUES,
@@ -26,10 +27,19 @@ const dateTimeFormatter = new Intl.DateTimeFormat("en-GB", {
 
 const PAGE_SIZE = 20;
 
-const SECTION_LABEL_KEY = {
-  all: "returns.sectionAll",
-  delivered: "returns.sectionDelivered",
-  returns: "returns.sectionReturns",
+// "Delivered"/"Returns" here mean the SAME thing as the Orders page's
+// StatusFilter's "Livré"/"Retour" pills — the exact same 2 buckets, just
+// shown as section tabs instead of a filter row. Reusing
+// STATUS_FILTER_LABELS (the one source of truth — see that constant's own
+// comment) instead of a second, separately-i18n'd copy is what keeps them
+// consistent and un-translatable everywhere at once (item: "one source of
+// truth for each business rule", not a duplicated implementation per
+// page). "All Orders" has no such fixed-vocabulary counterpart — it stays
+// a normal, translatable i18n string (`returns.sectionAll`).
+const SECTION_LABEL = {
+  all: null, // resolved via t("returns.sectionAll") below
+  delivered: STATUS_FILTER_LABELS.delivered,
+  returns: STATUS_FILTER_LABELS.return,
 };
 
 const EMPTY_MESSAGE_KEY = {
@@ -313,7 +323,7 @@ export default function ReturnsList({ employees }) {
                   : "text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
               }`}
             >
-              {t(SECTION_LABEL_KEY[value])} ({counts[value] ?? 0})
+              {SECTION_LABEL[value] ?? t("returns.sectionAll")} ({counts[value] ?? 0})
             </button>
           );
         })}

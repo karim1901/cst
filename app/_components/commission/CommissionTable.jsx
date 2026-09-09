@@ -3,13 +3,24 @@
 import { useEffect, useState } from "react";
 
 import MonthSelect from "@/app/_components/orders/MonthSelect";
+import ProviderTabs from "@/app/_components/orders/ProviderTabs";
 import { Spinner, ErrorBanner } from "@/app/_components/orders/shared";
+import { useLocale } from "@/app/_components/i18n/LocaleProvider";
 import { periodFor } from "@/lib/tracking/counter";
+import { SHIPPING_PROVIDERS } from "@/lib/shipping/providers";
 
 /**
  * Monthly employee commission report — fetched from our own backend
  * (`GET /api/commission`), which calculates everything server-side from
  * MongoDB (see lib/commission/report.js). Never calls Ozon/Quick itself.
+ *
+ * PROVIDER SEPARATION (item 3 — no mixed totals): the ProviderTabs below is
+ * the PRIMARY separation mechanism, not a secondary display column —
+ * switching it re-fetches an entirely separate, provider-scoped report
+ * (`?provider=...`) computed from a provider-filtered order set server-side
+ * (see lib/commission/report.js), never a frontend filter of an
+ * already-combined dataset. Selecting Ozon Express can never show a
+ * Quick-derived unit/threshold/rate/total, and vice versa.
  *
  * Two presentations of the exact same `employees` data/state, toggled by
  * breakpoint (Tailwind's `sm:`, ~640px) rather than two components with
@@ -27,23 +38,6 @@ const dateFormatter = new Intl.DateTimeFormat("en-GB", {
 
 const money = (value) => `${Number(value ?? 0).toLocaleString("en-US")} DH`;
 
-const PROVIDER_LABEL = {
-  ozon_express: "Ozon Express",
-  quick_livraison: "Quick Livraison",
-};
-
-// Compact "Ozon 5 · Quick 3" breakdown — provider transparency (item 10),
-// purely a DISPLAY drill-down of the already-computed, unchanged commission
-// numbers (lib/commission/report.js's `ordersByProvider` — additive only,
-// never a second commission calculation).
-function providerBreakdown(ordersByProvider) {
-  if (!ordersByProvider) return null;
-  const parts = Object.entries(ordersByProvider)
-    .filter(([, count]) => count > 0)
-    .map(([provider, count]) => `${PROVIDER_LABEL[provider] ?? provider} ${count}`);
-  return parts.length > 0 ? parts.join(" · ") : null;
-}
-
 /** "202608" -> "August 2026" — display only, shown on each mobile card so the selected month reads on its own without scrolling back up to the picker. */
 function periodLabel(period) {
   const year = Number(period.slice(0, 4));
@@ -56,19 +50,23 @@ function periodLabel(period) {
 }
 
 export default function CommissionTable({ emptyStateMessage = "No employees yet." }) {
+  const { t } = useLocale();
+  const [provider, setProvider] = useState(SHIPPING_PROVIDERS.OZON_EXPRESS);
   const [period, setPeriod] = useState(() => periodFor());
   const [state, setState] = useState("loading"); // loading | ready | error
   const [errorMessage, setErrorMessage] = useState("");
   const [employees, setEmployees] = useState([]);
   const [expandedId, setExpandedId] = useState(null);
 
-  // Reset per-fetch state when the selected month changes — done here,
-  // during render (React's recommended "adjust state when a value changes"
-  // pattern), rather than as setState calls at the top of the effect below,
-  // same fix already applied to OzonOrdersList/QuickOrdersList.
-  const [renderedForPeriod, setRenderedForPeriod] = useState(period);
-  if (period !== renderedForPeriod) {
-    setRenderedForPeriod(period);
+  // Reset per-fetch state when the provider or selected month changes —
+  // done here, during render (React's recommended "adjust state when a
+  // value changes" pattern), rather than as setState calls at the top of
+  // the effect below, same fix already applied throughout this app
+  // (ReturnsList.jsx, DashboardStats.jsx, ...).
+  const fetchKey = `${provider}|${period}`;
+  const [renderedForFetchKey, setRenderedForFetchKey] = useState(fetchKey);
+  if (fetchKey !== renderedForFetchKey) {
+    setRenderedForFetchKey(fetchKey);
     setState("loading");
     setErrorMessage("");
     setExpandedId(null);
@@ -77,7 +75,7 @@ export default function CommissionTable({ emptyStateMessage = "No employees yet.
   useEffect(() => {
     const controller = new AbortController();
 
-    fetch(`/api/commission?period=${encodeURIComponent(period)}`, {
+    fetch(`/api/commission?provider=${provider}&period=${encodeURIComponent(period)}`, {
       signal: controller.signal,
     })
       .then(async (res) => {
@@ -95,17 +93,20 @@ export default function CommissionTable({ emptyStateMessage = "No employees yet.
       });
 
     return () => controller.abort();
-  }, [period]);
+  }, [provider, period]);
 
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <MonthSelect value={period} onChange={setPeriod} disabled={state === "loading"} />
-        {state === "loading" ? (
-          <span className="inline-flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
-            <Spinner /> Loading…
-          </span>
-        ) : null}
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <ProviderTabs value={provider} onChange={setProvider} />
+        <div className="flex items-center gap-3">
+          <MonthSelect value={period} onChange={setPeriod} disabled={state === "loading"} />
+          {state === "loading" ? (
+            <span className="inline-flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
+              <Spinner /> {t("common.loading")}
+            </span>
+          ) : null}
+        </div>
       </div>
 
       {state === "error" ? <ErrorBanner>{errorMessage}</ErrorBanner> : null}
@@ -239,11 +240,6 @@ function EmployeeCard({ employee, period, expanded, onToggle }) {
         <>
           <div className="divide-y divide-zinc-100 border-t border-zinc-100 px-4 dark:divide-zinc-800/80 dark:border-zinc-800">
             <StatRow label="Delivered" value={employee.deliveredOrders} />
-            {providerBreakdown(employee.ordersByProvider) ? (
-              <p className="py-1 text-xs text-zinc-400 dark:text-zinc-500">
-                {providerBreakdown(employee.ordersByProvider)}
-              </p>
-            ) : null}
             <StatRow label="Units" value={employee.commissionUnits} />
             <StatRow label="Threshold" value={employee.threshold} />
             <StatRow label="Rate" value={money(employee.commissionRate)} />
@@ -290,9 +286,6 @@ function MobileOrderRow({ order }) {
         <span className="min-w-0 truncate font-mono text-xs text-zinc-700 dark:text-zinc-300">
           {order.trackingNumber}
         </span>
-        <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
-          {PROVIDER_LABEL[order.provider] ?? order.provider}
-        </span>
       </div>
       <div className="flex items-center justify-between text-xs text-zinc-500 dark:text-zinc-400">
         <span>{dateFormatter.format(new Date(order.deliveredAt))}</span>
@@ -332,11 +325,6 @@ function EmployeeRows({ employee, expanded, onToggle }) {
         </td>
         <td className="px-4 py-3 text-right tabular-nums text-zinc-700 dark:text-zinc-300">
           {employee.deliveredOrders}
-          {providerBreakdown(employee.ordersByProvider) ? (
-            <span className="block text-[11px] font-normal text-zinc-400 dark:text-zinc-500">
-              {providerBreakdown(employee.ordersByProvider)}
-            </span>
-          ) : null}
         </td>
         <td className="px-4 py-3 text-right tabular-nums text-zinc-700 dark:text-zinc-300">
           {employee.commissionUnits}
@@ -361,11 +349,10 @@ function EmployeeRows({ employee, expanded, onToggle }) {
               </p>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-140 text-left text-xs">
+                <table className="w-full min-w-120 text-left text-xs">
                   <thead className="text-zinc-500 dark:text-zinc-400">
                     <tr>
                       <th className="py-1.5 pr-3 font-medium">Tracking</th>
-                      <th className="py-1.5 pr-3 font-medium">Provider</th>
                       <th className="py-1.5 pr-3 font-medium">Delivered</th>
                       <th className="py-1.5 pr-3 font-medium text-right">Price</th>
                       <th className="py-1.5 pr-3 font-medium text-right">Units</th>
@@ -376,9 +363,6 @@ function EmployeeRows({ employee, expanded, onToggle }) {
                       <tr key={order.id}>
                         <td className="py-1.5 pr-3 font-mono text-zinc-700 dark:text-zinc-300">
                           {order.trackingNumber}
-                        </td>
-                        <td className="py-1.5 pr-3 text-zinc-500 dark:text-zinc-400">
-                          {PROVIDER_LABEL[order.provider] ?? order.provider}
                         </td>
                         <td className="py-1.5 pr-3 text-zinc-500 dark:text-zinc-400">
                           {dateFormatter.format(new Date(order.deliveredAt))}

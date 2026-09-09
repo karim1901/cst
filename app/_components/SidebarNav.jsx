@@ -64,6 +64,11 @@ const ICONS = {
       <path strokeLinecap="round" strokeLinejoin="round" d="M2.5 6.8 10 10.3l7.5-3.5M10 10.3V17" />
     </svg>
   ),
+  finance: (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.75" className="h-4.5 w-4.5">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 15.5V4.5M3 15.5h14M6.5 15.5v-5M10.5 15.5V8M14.5 15.5V6" />
+    </svg>
+  ),
   settings: (
     <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.75" className="h-4.5 w-4.5">
       <circle cx="10" cy="10" r="2.5" />
@@ -91,6 +96,10 @@ function navItemsFor(role, t) {
     // reason Follow-up is: it's a merchant-side internal workflow, not
     // something an employee acts on directly.
     items.push({ href: "/dashboard/returns", label: t("nav.returns"), icon: ICONS.returns });
+    // Finance ("Advertising & Profit") — merchant-only business financial
+    // reporting, same ownership boundary as Follow-up/Returns/Commission's
+    // merchant-side view (see app/dashboard/finance/page.jsx).
+    items.push({ href: "/dashboard/finance", label: t("nav.finance"), icon: ICONS.finance });
     items.push({ href: "/dashboard/employees", label: t("nav.employees"), icon: ICONS.employees });
     items.push({
       href: "/dashboard/shipping-companies",

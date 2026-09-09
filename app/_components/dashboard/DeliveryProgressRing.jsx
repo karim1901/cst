@@ -1,6 +1,7 @@
 "use client";
 
 import { useLocale } from "@/app/_components/i18n/LocaleProvider";
+import { STATUS_FILTER_LABELS } from "@/lib/orders/status-groups";
 
 /**
  * Green/red donut showing the Livré vs. Retour split. Plain SVG + a little
@@ -94,7 +95,7 @@ export default function DeliveryProgressRing({ delivered, returned }) {
         <span className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
           {deliveredPercent}%
         </span>
-        <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">{t("dashboard.delivered")}</span>
+        <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">{STATUS_FILTER_LABELS.delivered}</span>
       </div>
     </div>
   );
