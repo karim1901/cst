@@ -79,6 +79,32 @@ const orderSchema = new Schema(
     productNature: { type: String, required: [true, "productNature is required."], trim: true },
     price: { type: Number, required: [true, "price is required."], min: 0 },
 
+    // Where `price` came from — so an incomplete provider response can never
+    // silently overwrite a real amount, and so "price is 0 because we don't
+    // know it" is distinguishable from "price is genuinely 0".
+    //
+    //  - "order_creation" : entered by the user at creation
+    //                       (app/api/orders/{quick,ozon}) — the canonical,
+    //                       trustworthy source. NEVER overwritten by sync.
+    //  - "provider_sync"  : recovered from a provider response that actually
+    //                       carried an amount (Ozon's fetch does; Quick's
+    //                       getParcelDetails does NOT — verified live).
+    //  - "manual"         : set by a maintenance/repair script.
+    //  - "unknown"        : no trustworthy amount available (a Quick parcel
+    //                       discovered by historical sync — Quick's API
+    //                       exposes no amount for it). `price` is stored as
+    //                       0 as a placeholder; lib/commission/calculate.js
+    //                       counts it as 0 commission units, never 1.
+    //
+    // Historical/legacy rows created before this field existed have it
+    // unset; readers treat `unset + price > 0` as trustworthy (see
+    // lib/quick/amount.js#resolveSyncedQuickPrice), and the one-off
+    // scripts/repair-quick-order-prices.mjs backfills it explicitly.
+    priceSource: {
+      type: String,
+      enum: ["order_creation", "provider_sync", "manual", "unknown"],
+    },
+
     // Quick Livraison-only fields — optional/unset for Ozon Express orders.
     // Kept on the shared model rather than a second one (see the module
     // comment) since every other field already applies to both providers.
@@ -165,6 +191,13 @@ orderSchema.index({ provider: 1, trackingNumber: 1 }, { unique: true });
 // separate {merchantId, provider, employeeId, …} index is not warranted.
 orderSchema.index({ merchantId: 1, provider: 1, trackingNumber: 1 });
 orderSchema.index({ merchantId: 1, provider: 1, phone: 1 });
+// Dashboard statistics (lib/orders/dashboard-stats.js#
+// computeOrderDeliveryStats, via app/api/dashboard/stats): this merchant's
+// orders for ONE provider whose tracking-number month matches the selected
+// period — an anchored `numericTrackingNumber` prefix, the same month rule
+// Commission/Finance already use. The employee-scoped variant adds
+// `employeeId` as a residual match on the already-small per-month result.
+orderSchema.index({ merchantId: 1, provider: 1, numericTrackingNumber: 1 });
 // Commission calculation's own access pattern — see lib/commission/report.js:
 // "this employee's orders whose tracking number encodes the selected month
 // (an anchored regex on `numericTrackingNumber`, which this index serves)

@@ -263,6 +263,12 @@ function EmployeeCard({ employee, period, expanded, onToggle }) {
             <StatRow label={t("commission.total")} value={money(employee.totalCommission)} emphasized />
           </div>
 
+          {employee.unknownPriceOrders > 0 ? (
+            <p className="border-t border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-300">
+              {employee.unknownPriceOrders} {t("commission.unknownPriceNote")}
+            </p>
+          ) : null}
+
           <button
             type="button"
             onClick={onToggle}
@@ -308,7 +314,9 @@ function MobileOrderRow({ order }) {
       </div>
       <div className="flex items-center justify-between text-xs text-zinc-500 dark:text-zinc-400">
         <span>{fmtDate(order.deliveredAt, locale)}</span>
-        <span className="tabular-nums text-zinc-700 dark:text-zinc-300">{money(order.price)}</span>
+        <span className="tabular-nums text-zinc-700 dark:text-zinc-300">
+          {order.priceUsable === false ? "—" : money(order.price)}
+        </span>
         <span className="tabular-nums font-semibold text-zinc-900 dark:text-zinc-50">
           {order.commissionUnits}{" "}
           {order.commissionUnits === 1 ? t("commission.unitSuffix") : t("commission.unitsSuffix")}
@@ -364,6 +372,11 @@ function EmployeeRows({ employee, expanded, onToggle }) {
       {expanded ? (
         <tr>
           <td colSpan={7} className="bg-zinc-50 px-4 py-3 dark:bg-zinc-900/60">
+            {employee.unknownPriceOrders > 0 ? (
+              <p className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-300">
+                {employee.unknownPriceOrders} {t("commission.unknownPriceNote")}
+              </p>
+            ) : null}
             {employee.orders.length === 0 ? (
               <p className="text-sm text-zinc-500 dark:text-zinc-400">
                 {t("commission.noDeliveredThisMonth")}
@@ -389,7 +402,7 @@ function EmployeeRows({ employee, expanded, onToggle }) {
                           {fmtDate(order.deliveredAt, locale)}
                         </td>
                         <td className="py-1.5 pr-3 text-right tabular-nums text-zinc-700 dark:text-zinc-300">
-                          {money(order.price)}
+                          {order.priceUsable === false ? "—" : money(order.price)}
                         </td>
                         <td className="py-1.5 pr-3 text-right tabular-nums font-semibold text-zinc-900 dark:text-zinc-50">
                           {order.commissionUnits}

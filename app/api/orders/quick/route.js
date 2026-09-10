@@ -478,6 +478,11 @@ export async function POST(request) {
       address,
       productNature: productName,
       price: amount,
+      // The user typed this amount just now — the canonical, trustworthy
+      // price source. Quick's getParcelDetails carries no amount, so
+      // historical sync must never overwrite this
+      // (see lib/quick/amount.js#resolveSyncedQuickPrice).
+      priceSource: "order_creation",
       quantity,
       note,
       providerLocationId: districtId,

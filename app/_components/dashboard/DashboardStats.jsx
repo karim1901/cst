@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import ProviderTabs from "@/app/_components/orders/ProviderTabs";
 import MonthSelect from "@/app/_components/orders/MonthSelect";
 import StatsCards from "@/app/_components/dashboard/StatsCards";
+import CommissionCards from "@/app/_components/dashboard/CommissionCards";
 import { Spinner, ErrorBanner } from "@/app/_components/orders/shared";
 import { useLocale } from "@/app/_components/i18n/LocaleProvider";
 import { SHIPPING_PROVIDERS } from "@/lib/shipping/providers";
@@ -19,8 +20,14 @@ import { SHIPPING_PROVIDERS } from "@/lib/shipping/providers";
  * (item 3's explicit requirement) — switching the provider tab re-fetches
  * an entirely separate, provider-scoped query; it never filters an
  * already-fetched combined dataset in the browser.
+ *
+ * The four count cards are ALWAYS for the ONE provider picked in
+ * ProviderTabs. The "Total Commission" section below them
+ * (`isEmployee` only — a merchant has no commission of their own) is
+ * deliberately INDEPENDENT of that tab: it always shows BOTH providers'
+ * commission plus their sum, and only re-fetches when the MONTH changes.
  */
-export default function DashboardStats() {
+export default function DashboardStats({ isEmployee = false }) {
   const { t } = useLocale();
   const [provider, setProvider] = useState(SHIPPING_PROVIDERS.OZON_EXPRESS);
   const [period, setPeriod] = useState(""); // "" = all time
@@ -83,6 +90,10 @@ export default function DashboardStats() {
       ) : stats ? (
         <StatsCards stats={stats} />
       ) : null}
+
+      {/* Employee's commission for the selected month — BOTH providers,
+          independent of the ProviderTabs selection above. */}
+      {isEmployee ? <CommissionCards period={period} /> : null}
     </div>
   );
 }

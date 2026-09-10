@@ -348,6 +348,9 @@ export async function POST(request) {
       address,
       productNature,
       price,
+      // The user typed this amount just now — the canonical, trustworthy
+      // price source; historical sync must never overwrite it.
+      priceSource: "order_creation",
       providerResult: result.result,
     });
   } catch (error) {

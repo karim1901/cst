@@ -27,8 +27,10 @@ export default async function DashboardPage() {
 
         {/* Provider + month statistics — see DashboardStats.jsx's own
             comment: Ozon Express and Quick Livraison are always fetched
-            and shown separately, never combined into one number. */}
-        {isOrderCreator ? <DashboardStats /> : null}
+            and shown separately, never combined into one number. The
+            "Total Commission" section under it renders for employees only
+            (a merchant has no commission of their own). */}
+        {isOrderCreator ? <DashboardStats isEmployee={user.role === USER_ROLES.EMPLOYEE} /> : null}
 
         <DashboardQuickLinks role={user.role} />
       </div>
