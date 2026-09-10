@@ -145,6 +145,32 @@ const orderSchema = new Schema(
     // AUGUST's commission.
     deliveredAt: { type: Date, default: null },
 
+    // The REAL date this order was created AT THE SHIPPING PROVIDER — Quick
+    // Livraison's `date_creation`, or Ozon Express's earliest tracking-
+    // history step time (see lib/quick/parse.js#quickCreatedAt /
+    // lib/ozon/history.js#findCreatedAt). This is the order's BUSINESS
+    // creation date and is the ONLY correct grouping key for day-by-day
+    // business reporting (the Finance "Advertising & Profit" Daily view —
+    // see lib/finance/calculate.js and lib/finance/business-date.js).
+    //
+    // It is DELIBERATELY SEPARATE from `createdAt` (Mongoose's own
+    // timestamp), which is when THIS DOCUMENT was inserted into our
+    // MongoDB — for an order discovered by historical sync that is the
+    // sync run's date, NOT when the order was really placed (dozens of
+    // real orders from different days all got the same sync-day
+    // `createdAt`). `createdAt` stays untouched and is still the right
+    // choice for audit/"newest record" sorting; `orderDate` is the right
+    // choice for "which business day does this order belong to".
+    //
+    // `null` when no trustworthy provider date is available (a legacy row
+    // not yet backfilled, or a provider response that carried no creation
+    // date) — never guessed. Finance falls back to `createdAt` for such a
+    // row ONLY so it is not dropped from a total, and flags it as
+    // approximate. Not the commission month: that is still
+    // `numericTrackingNumber`'s leading "YYYYMM"
+    // (lib/commission/resolve-commission-period.js), unchanged.
+    orderDate: { type: Date, default: null },
+
     // ---- Returns management (app/dashboard/returns) -------------------
     // The MERCHANT's own internal "did I physically get this package back?"
     // confirmation — completely independent from `lastKnownStatus` above.
@@ -198,6 +224,10 @@ orderSchema.index({ merchantId: 1, provider: 1, phone: 1 });
 // Commission/Finance already use. The employee-scoped variant adds
 // `employeeId` as a residual match on the already-small per-month result.
 orderSchema.index({ merchantId: 1, provider: 1, numericTrackingNumber: 1 });
+// Finance business-date backfill (scripts/backfill-order-date.mjs) scans for
+// orders still missing a real provider creation date; a business-date range
+// query is a natural future access pattern too.
+orderSchema.index({ merchantId: 1, provider: 1, orderDate: 1 });
 // Commission calculation's own access pattern — see lib/commission/report.js:
 // "this employee's orders whose tracking number encodes the selected month
 // (an anchored regex on `numericTrackingNumber`, which this index serves)

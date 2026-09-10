@@ -10,6 +10,7 @@ import { Spinner } from "@/app/_components/orders/shared";
 import { useLocale } from "@/app/_components/i18n/LocaleProvider";
 import { periodFor } from "@/lib/tracking/counter";
 import { SHIPPING_PROVIDERS } from "@/lib/shipping/providers";
+import { matchesStatusFilter } from "@/lib/orders/status-groups";
 
 /**
  * Ozon Express orders — fetched from our own backend (`GET /api/orders/ozon`),
@@ -43,6 +44,7 @@ function trackingSortKey(order) {
 }
 
 export default function OzonOrdersList({
+  active = true,
   employeeId = null,
   period: controlledPeriod,
   onPeriodChange,
@@ -51,6 +53,13 @@ export default function OzonOrdersList({
   onFollowUpAdded,
 }) {
   const { t } = useLocale();
+  // This list may be mounted-but-hidden (the non-selected provider tab —
+  // see OrdersPageClient). It streams its month exactly ONCE, the first
+  // time it becomes `active`, and keeps that data forever after — so
+  // toggling back to this provider never re-streams. `activated` latches
+  // true and never goes back.
+  const [activated, setActivated] = useState(active);
+  if (active && !activated) setActivated(true);
   // Controlled when a parent passes `period` (the merchant Orders page, so
   // its own OrderFilters is the single month picker on screen instead of a
   // second one duplicated in here) — uncontrolled otherwise (the plain
@@ -65,12 +74,13 @@ export default function OzonOrdersList({
   const [orders, setOrders] = useState([]);
   const [streamDone, setStreamDone] = useState(false);
 
-  // Reset per-fetch state when the selected month OR the viewed employee
-  // changes — done here, during render (React's recommended "adjust state
-  // when a value changes" pattern), rather than as setState calls at the
-  // top of the effect below, which trigger an avoidable extra cascading
-  // render.
-  const resetKey = `${period}|${employeeId}|${status}`;
+  // Reset per-fetch state ONLY when the actual data-fetch scope changes —
+  // the selected month or the viewed employee. The status filter
+  // (All/Livré/Progress/Retour) is DELIBERATELY NOT part of this key: it is
+  // a pure client-side view of the already-loaded month, never a reason to
+  // re-stream from the provider (see `visibleOrders` below). Done during
+  // render — React's "adjust state when a value changes" pattern.
+  const resetKey = `${period}|${employeeId}`;
   const [renderedForKey, setRenderedForKey] = useState(resetKey);
   if (resetKey !== renderedForKey) {
     setRenderedForKey(resetKey);
@@ -82,15 +92,17 @@ export default function OzonOrdersList({
   }
 
   useEffect(() => {
+    if (!activated) return; // dormant (hidden provider tab) — don't stream until first shown
     const controller = new AbortController();
     const seen = new Set(); // tracking numbers already added — never render a duplicate
 
     async function run() {
       let res;
       try {
+        // The WHOLE month is streamed once — every status. The status tab
+        // filters this dataset locally; it is never sent to the server.
         const params = new URLSearchParams({ period });
         if (employeeId) params.set("employeeId", employeeId);
-        if (status && status !== "all") params.set("status", status);
         res = await fetch(`/api/orders/ozon?${params.toString()}`, {
           signal: controller.signal,
         });
@@ -171,7 +183,23 @@ export default function OzonOrdersList({
     run();
 
     return () => controller.abort();
-  }, [period, employeeId, status]);
+  }, [period, employeeId, activated]);
+
+  // Pure client-side view of the already-streamed month — recomputed on
+  // every render (cheap: the list is bounded by the backend's own request
+  // cap). Switching the status tab NEVER refetches; newly-arrived orders
+  // that match the active filter appear automatically because `orders`
+  // keeps growing under it.
+  const visibleOrders =
+    !status || status === "all"
+      ? orders
+      : orders.filter((o) =>
+          matchesStatusFilter(
+            SHIPPING_PROVIDERS.OZON_EXPRESS,
+            o?._displayStatus ?? o?.STATUT,
+            status
+          )
+        );
 
   if (state === "connecting") {
     return (
@@ -214,8 +242,8 @@ export default function OzonOrdersList({
       {!streamDone ? (
         <div className="mb-4 flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
           <Spinner />
-          {orders.length > 0
-            ? `${orders.length} ${orders.length === 1 ? t("common.order") : t("common.orders")} ${t("orders.loadingMore")}`
+          {visibleOrders.length > 0
+            ? `${visibleOrders.length} ${visibleOrders.length === 1 ? t("common.order") : t("common.orders")} ${t("orders.loadingMore")}`
             : t("orders.lookingForOrders")}
         </div>
       ) : warning ? (
@@ -224,13 +252,17 @@ export default function OzonOrdersList({
         </p>
       ) : null}
 
-      {orders.length === 0 ? (
+      {visibleOrders.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-zinc-300 px-6 py-14 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
-          {streamDone ? t("orders.noOrdersYet") : t("orders.lookingForOrders")}
+          {!streamDone
+            ? t("orders.lookingForOrders")
+            : orders.length > 0
+              ? t("orders.noOrdersForFilter")
+              : t("orders.noOrdersYet")}
         </p>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {orders.map((order, index) => (
+          {visibleOrders.map((order, index) => (
             <OrderCard
               key={order?.INFOS?.["TRACKING-NUMBER"] ?? index}
               order={order}

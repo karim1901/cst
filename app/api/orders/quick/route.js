@@ -483,6 +483,10 @@ export async function POST(request) {
       // historical sync must never overwrite this
       // (see lib/quick/amount.js#resolveSyncedQuickPrice).
       priceSource: "order_creation",
+      // Created here and now — `orderDate` (business creation date) and
+      // `createdAt` (DB insert) coincide for an app-created order. See
+      // models/Order.js#orderDate.
+      orderDate: new Date(),
       quantity,
       note,
       providerLocationId: districtId,

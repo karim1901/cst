@@ -9,29 +9,56 @@ import { toFollowUpSummary } from "@/lib/order-followups";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-async function requireMerchant() {
+/**
+ * The owner scope (merchantId + createdByType + createdById) for the
+ * authenticated user, all from the server-verified session — identical
+ * rule to app/api/order-followups/route.js. Every lookup below is scoped
+ * to `{ _id, ...owner }` TOGETHER, so:
+ *   - a follow-up id belonging to another user (another employee, or the
+ *     merchant) 404s exactly like one that doesn't exist;
+ *   - an employee can never edit/delete a merchant's record or another
+ *     employee's, and a merchant can never touch an employee's;
+ *   - a client-supplied id is the ONLY thing taken from the request, and
+ *     it can only ever match this user's own records.
+ */
+async function resolveFollowUpOwner() {
   const currentUser = await getCurrentUser();
   if (!currentUser) {
     return { error: NextResponse.json({ error: "Authentication required." }, { status: 401 }) };
   }
-  if (currentUser.role !== USER_ROLES.MERCHANT) {
+  if (currentUser.role === USER_ROLES.MERCHANT) {
     return {
-      error: NextResponse.json({ error: "Only merchants can use follow-up." }, { status: 403 }),
+      owner: { merchantId: currentUser.id, createdByType: "merchant", createdById: currentUser.id },
     };
   }
-  return { currentUser };
+  if (currentUser.role === USER_ROLES.EMPLOYEE) {
+    return {
+      owner: {
+        merchantId: currentUser.merchantId,
+        createdByType: "employee",
+        createdById: currentUser.id,
+      },
+    };
+  }
+  return {
+    error: NextResponse.json(
+      { error: "Only merchants and employees can use follow-up." },
+      { status: 403 }
+    ),
+  };
 }
 
-/**
- * Both handlers below scope every lookup to `{_id, merchantId:
- * currentUser.id}` together — a follow-up id belonging to another merchant
- * 404s exactly like one that doesn't exist, never revealing which case it
- * is, and never trusting a client-supplied merchantId for anything.
- */
+const POPULATE = [
+  {
+    path: "orderId",
+    select: "trackingNumber receiverName phone city address productNature price lastKnownStatus deliveredAt",
+  },
+  { path: "employeeId", select: "name" },
+];
 
 /** Edit a follow-up's note — the note only; the referenced order is never touched. */
 export async function PATCH(request, { params }) {
-  const { currentUser, error } = await requireMerchant();
+  const { owner, error } = await resolveFollowUpOwner();
   if (error) return error;
 
   const { id } = await params;
@@ -54,15 +81,11 @@ export async function PATCH(request, { params }) {
   await connectToDatabase();
 
   const followUp = await OrderFollowUp.findOneAndUpdate(
-    { _id: id, merchantId: currentUser.id },
+    { _id: id, ...owner },
     { $set: { note } },
     { new: true }
   )
-    .populate({
-      path: "orderId",
-      select: "trackingNumber receiverName phone city address productNature price lastKnownStatus deliveredAt",
-    })
-    .populate({ path: "employeeId", select: "name" })
+    .populate(POPULATE)
     .lean();
 
   if (!followUp) {
@@ -76,10 +99,12 @@ export async function PATCH(request, { params }) {
  * Remove a follow-up record ONLY — never the Order it references, its
  * status, tracking data, employee, or commission information. This is a
  * `deleteOne` on `OrderFollowUp` exclusively; nothing here ever touches the
- * `Order` collection.
+ * `Order` collection. Scoped to this user's own records (see
+ * `resolveFollowUpOwner`), so deleting the merchant's copy of an order's
+ * follow-up leaves any employee's copy — and the order itself — intact.
  */
 export async function DELETE(request, { params }) {
-  const { currentUser, error } = await requireMerchant();
+  const { owner, error } = await resolveFollowUpOwner();
   if (error) return error;
 
   const { id } = await params;
@@ -89,7 +114,7 @@ export async function DELETE(request, { params }) {
 
   await connectToDatabase();
 
-  const result = await OrderFollowUp.deleteOne({ _id: id, merchantId: currentUser.id });
+  const result = await OrderFollowUp.deleteOne({ _id: id, ...owner });
   if (result.deletedCount === 0) {
     return NextResponse.json({ error: "Follow-up not found." }, { status: 404 });
   }

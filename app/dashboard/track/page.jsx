@@ -9,9 +9,12 @@ export const generateMetadata = localizedTitle("nav.followUp");
 export const dynamic = "force-dynamic";
 
 /**
- * Follow-up — merchant-only, same rule enforced server-side by every
- * app/api/order-followups/* route (see their own comments). This
- * page-level gate is defense in depth, not the only check.
+ * Follow-up — available to MERCHANTS and EMPLOYEES, each seeing only their
+ * OWN list. The real authorization is enforced server-side by every
+ * app/api/order-followups/* route (owner = session-derived
+ * merchantId+createdByType+createdById — see their own comments); this
+ * page-level gate is defense in depth, not the only check. Super admins
+ * have no follow-up list.
  */
 export default async function TrackPage() {
   const user = await getCurrentUser();
@@ -19,7 +22,7 @@ export default async function TrackPage() {
   if (!user) {
     redirect("/login");
   }
-  if (user.role !== USER_ROLES.MERCHANT) {
+  if (user.role !== USER_ROLES.MERCHANT && user.role !== USER_ROLES.EMPLOYEE) {
     redirect("/dashboard");
   }
 

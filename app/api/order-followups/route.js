@@ -6,76 +6,95 @@ import { USER_ROLES } from "@/models/User";
 import { SHIPPING_PROVIDER_VALUES } from "@/models/ShippingCompany";
 import Order from "@/models/Order";
 import OrderFollowUp from "@/models/OrderFollowUp";
-import { listFollowUpsForMerchant, toFollowUpSummary } from "@/lib/order-followups";
+import { listFollowUpsForOwner, toFollowUpSummary } from "@/lib/order-followups";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * Follow-up — a merchant's own manual reminder list layered on top
- * of Orders, entirely separate from Ozon/Quick shipping tracking (see
- * models/OrderFollowUp.js's module comment). Merchant-only end to end: the
- * whole feature request describes this from the merchant's perspective
- * throughout, and explicitly warns employees must not automatically gain
- * access — the safe, spec-consistent default is that employees don't see
- * or use this feature at all, not just the list page.
+ * Follow-up — a user's OWN manual reminder list layered on top of Orders,
+ * entirely separate from Ozon/Quick shipping tracking (see
+ * models/OrderFollowUp.js's module comment).
+ *
+ * MERCHANT and EMPLOYEE each get their OWN independent list. The owner of a
+ * record is `(createdByType, createdById)`, ALWAYS derived here from the
+ * server-verified session — never from the request body:
+ *   - a merchant  -> { merchantId: self, createdByType: "merchant", createdById: self }
+ *   - an employee -> { merchantId: theirMerchant, createdByType: "employee", createdById: self }
+ * Every query is scoped by all three, so a merchant never sees an
+ * employee's follow-ups (or vice versa), and no one sees another tenant's.
  */
-async function requireMerchant() {
+async function resolveFollowUpOwner() {
   const currentUser = await getCurrentUser();
   if (!currentUser) {
     return { error: NextResponse.json({ error: "Authentication required." }, { status: 401 }) };
   }
-  if (currentUser.role !== USER_ROLES.MERCHANT) {
+  if (currentUser.role === USER_ROLES.MERCHANT) {
     return {
-      error: NextResponse.json({ error: "Only merchants can use follow-up." }, { status: 403 }),
+      currentUser,
+      owner: { merchantId: currentUser.id, createdByType: "merchant", createdById: currentUser.id },
     };
   }
-  return { currentUser };
+  if (currentUser.role === USER_ROLES.EMPLOYEE) {
+    return {
+      currentUser,
+      owner: {
+        merchantId: currentUser.merchantId,
+        createdByType: "employee",
+        createdById: currentUser.id,
+      },
+    };
+  }
+  return {
+    error: NextResponse.json(
+      { error: "Only merchants and employees can use follow-up." },
+      { status: 403 }
+    ),
+  };
 }
 
 /**
- * Every follow-up item belonging to the authenticated merchant. Optional
- * `?provider=` (validated against SHIPPING_PROVIDER_VALUES; anything else
- * is ignored, not rejected — see app/_components/track/FollowUpList.jsx's
- * ProviderTabs, which always sends a valid value, vs.
- * OrdersPageClient.jsx's own unfiltered call for its cross-provider
- * "already added" lookup, which must keep working exactly as before this
- * parameter existed) scopes to one provider's follow-ups only, enforced at
- * the MongoDB query level (item 9/11).
+ * Every follow-up item belonging to the authenticated user's OWN list.
+ * Optional `?provider=` (validated against SHIPPING_PROVIDER_VALUES;
+ * anything else is ignored, not rejected) scopes to one provider's
+ * follow-ups only, enforced at the MongoDB query level.
  */
 export async function GET(request) {
-  const { currentUser, error } = await requireMerchant();
+  const { owner, error } = await resolveFollowUpOwner();
   if (error) return error;
 
   const requestedProvider = new URL(request.url).searchParams.get("provider");
   const provider = SHIPPING_PROVIDER_VALUES.includes(requestedProvider) ? requestedProvider : null;
 
-  const followUps = await listFollowUpsForMerchant(currentUser.id, provider);
+  const followUps = await listFollowUpsForOwner(owner, provider);
   return NextResponse.json({ followUps });
 }
 
 /**
- * Add one order to the merchant's follow-up list, with an optional note.
+ * Add one order to the authenticated user's OWN follow-up list, with an
+ * optional note.
  *
- * Identifies the order by `{provider, trackingNumber}` — the same pair
- * `models/Order.js`'s own unique index already treats as an order's
- * canonical identity — rather than a raw database id, so this works
- * uniformly from every Orders-page card regardless of which of the three
- * listing surfaces rendered it (the live Ozon/Quick streams don't
- * necessarily carry this app's internal Order `_id` on each item; every
- * card DOES always know its own tracking number). The order is then looked
- * up scoped to `merchantId: currentUser.id` — an id/tracking number that
- * isn't a real, owned order 404s exactly like one that doesn't exist,
- * preventing IDOR regardless of what a client sends.
+ * The order is identified by `{provider, trackingNumber}` (the same pair
+ * models/Order.js's own unique index treats as an order's canonical
+ * identity) and then looked up scoped to what THIS caller is allowed to
+ * touch:
+ *   - a merchant  -> any order under their own `merchantId`
+ *   - an employee -> only orders under their merchant that ALSO belong to
+ *                    them (`employeeId: self`) — an employee can only
+ *                    follow up an order they are allowed to see, and can
+ *                    never probe another employee's tracking numbers.
+ * An id/tracking number that isn't such an order 404s exactly like one
+ * that doesn't exist, preventing IDOR regardless of what a client sends.
  *
  * Race-safe duplicate prevention: relies on the unique
- * `{merchantId, orderId}` index (see the model) — a losing concurrent
- * request catches the resulting E11000 and returns the WINNING request's
- * record instead of erroring, per the feature's own "use the existing
- * record" rule.
+ * `{merchantId, createdByType, createdById, orderId}` index (see the
+ * model) — a losing concurrent request catches the E11000 and returns the
+ * WINNING request's record instead of erroring. A merchant record and an
+ * employee record for the SAME order do NOT collide (different owner) —
+ * intentional.
  */
 export async function POST(request) {
-  const { currentUser, error } = await requireMerchant();
+  const { currentUser, owner, error } = await resolveFollowUpOwner();
   if (error) return error;
 
   let body;
@@ -98,11 +117,11 @@ export async function POST(request) {
 
   await connectToDatabase();
 
-  const order = await Order.findOne({
-    merchantId: currentUser.id,
-    provider,
-    trackingNumber,
-  }).select("_id employeeId provider");
+  const orderFilter = { merchantId: owner.merchantId, provider, trackingNumber };
+  if (currentUser.role === USER_ROLES.EMPLOYEE) {
+    orderFilter.employeeId = currentUser.id;
+  }
+  const order = await Order.findOne(orderFilter).select("_id employeeId provider merchantId");
 
   if (!order) {
     return NextResponse.json(
@@ -117,8 +136,10 @@ export async function POST(request) {
   let followUpId;
   try {
     const created = await OrderFollowUp.create({
-      merchantId: currentUser.id,
+      merchantId: owner.merchantId,
       orderId: order._id,
+      createdByType: owner.createdByType,
+      createdById: owner.createdById,
       employeeId: order.employeeId,
       provider: order.provider,
       note,
@@ -126,16 +147,15 @@ export async function POST(request) {
     followUpId = created._id;
   } catch (err) {
     if (err?.code === 11000) {
-      // Already followed up (this request or a concurrent one) — use the
-      // existing record rather than creating a duplicate or erroring.
+      // Already in THIS owner's list (this request or a concurrent one) —
+      // use the existing record rather than creating a duplicate.
       const existing = await OrderFollowUp.findOne({
-        merchantId: currentUser.id,
+        merchantId: owner.merchantId,
+        createdByType: owner.createdByType,
+        createdById: owner.createdById,
         orderId: order._id,
       }).select("_id");
       if (!existing) {
-        // Vanishingly unlikely (deleted between the failed insert and this
-        // lookup) — surface a genuine error rather than silently returning
-        // nothing.
         console.error("[POST /api/order-followups] duplicate-key race could not be resolved");
         return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 });
       }

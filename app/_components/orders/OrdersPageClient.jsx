@@ -116,11 +116,13 @@ export default function OrdersPageClient({ isMerchant, employees }) {
 
   const isSearching = searchQuery.length > 0;
 
-  // --- Follow-up set (merchant only), fetched once ------------------
+  // --- Follow-up set, fetched once ---------------------------------
+  // Both merchants and employees have their OWN follow-up list now; the
+  // API scopes GET to the authenticated owner, so this is the caller's
+  // own set of already-followed-up orders either way.
   const [followUpKeys, setFollowUpKeys] = useState(null);
 
   useEffect(() => {
-    if (!isMerchant) return;
     const controller = new AbortController();
     fetch("/api/order-followups", { signal: controller.signal })
       .then(async (res) => {
@@ -139,7 +141,7 @@ export default function OrdersPageClient({ isMerchant, employees }) {
         }
       });
     return () => controller.abort();
-  }, [isMerchant]);
+  }, []);
 
   function isFollowedUp(trackingNumber) {
     return followUpKeys?.has(followUpKey(provider, trackingNumber)) ?? false;
@@ -156,9 +158,15 @@ export default function OrdersPageClient({ isMerchant, employees }) {
   const viewingEmployeeId =
     employeeFilter !== "me" && employeeFilter !== "all" ? employeeFilter : null;
 
-  const followUpProps = isMerchant
-    ? { followUpSet: followUpKeys, isFollowedUp, onFollowUpAdded: handleFollowUpAdded }
-    : { followUpSet: null, isFollowedUp: () => false, onFollowUpAdded: undefined };
+  // Follow-up is available to both roles now — a merchant adds to their own
+  // merchant list, an employee to their own employee list (the server
+  // decides the owner from the session). The set here is always the
+  // caller's own already-followed-up orders.
+  const followUpProps = {
+    followUpSet: followUpKeys,
+    isFollowedUp,
+    onFollowUpAdded: handleFollowUpAdded,
+  };
 
   // Which employee scope the search endpoint should apply (merchants only —
   // an employee is always scoped to themselves server-side). "all" -> send
@@ -228,22 +236,36 @@ export default function OrdersPageClient({ isMerchant, employees }) {
           status={status}
           {...followUpProps}
         />
-      ) : provider === SHIPPING_PROVIDERS.OZON_EXPRESS ? (
-        <OzonOrdersList
-          employeeId={viewingEmployeeId}
-          period={period}
-          onPeriodChange={setPeriod}
-          status={status}
-          {...followUpProps}
-        />
       ) : (
-        <QuickOrdersList
-          employeeId={viewingEmployeeId}
-          period={period}
-          onPeriodChange={setPeriod}
-          status={status}
-          {...followUpProps}
-        />
+        // BOTH provider lists stay mounted; only the selected one is
+        // visible. Each streams its month ONCE, the first time it becomes
+        // active, and keeps that dataset afterwards — so switching Ozon <->
+        // Quick within the page session never re-streams an already-loaded
+        // provider (a full browser refresh still fetches fresh). The status
+        // tab filters each list's loaded dataset locally (see the list
+        // components) — it never refetches either.
+        <>
+          <div hidden={provider !== SHIPPING_PROVIDERS.OZON_EXPRESS}>
+            <OzonOrdersList
+              active={provider === SHIPPING_PROVIDERS.OZON_EXPRESS}
+              employeeId={viewingEmployeeId}
+              period={period}
+              onPeriodChange={setPeriod}
+              status={status}
+              {...followUpProps}
+            />
+          </div>
+          <div hidden={provider !== SHIPPING_PROVIDERS.QUICK_LIVRAISON}>
+            <QuickOrdersList
+              active={provider === SHIPPING_PROVIDERS.QUICK_LIVRAISON}
+              employeeId={viewingEmployeeId}
+              period={period}
+              onPeriodChange={setPeriod}
+              status={status}
+              {...followUpProps}
+            />
+          </div>
+        </>
       )}
     </div>
   );

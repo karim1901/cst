@@ -55,6 +55,12 @@ export default function MonthlyOverview({ stats }) {
         </div>
       ) : null}
 
+      {totals.orderDateMissing > 0 ? (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300">
+          {totals.orderDateMissing} {t("finance.ordersApproxDate")}
+        </div>
+      ) : null}
+
       <section className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatCard label={t("common.orders")} value={totals.orders} />
         {/* "Livré"/"Retour"/"Progress" — this app's own established status

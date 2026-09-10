@@ -84,12 +84,13 @@ function navItemsFor(role, t) {
   if (role === "merchant" || role === "employee") {
     items.push({ href: "/dashboard/orders", label: t("nav.orders"), icon: ICONS.orders });
     items.push({ href: "/dashboard/commission", label: t("nav.commission"), icon: ICONS.commission });
+    // Follow-up — a personal manual reminder list layered on top of Orders
+    // (see app/api/order-followups/route.js's module comment). Merchants
+    // AND employees each get their OWN independent list; the server scopes
+    // every query to the session owner. Never shown to super admins.
+    items.push({ href: "/dashboard/track", label: t("nav.followUp"), icon: ICONS.track });
   }
   if (role === "merchant") {
-    // Follow-up is a merchant-only manual follow-up list layered on top of
-    // Orders (see app/api/order-followups/route.js's module comment) —
-    // never shown to employees or super admins.
-    items.push({ href: "/dashboard/track", label: t("nav.followUp"), icon: ICONS.track });
     // Returns — internal management of cancelled/refused/returned orders,
     // deliberately separate from Follow-up (see app/_components/returns/
     // ReturnsList.jsx's module comment for why). Merchant-only for the same

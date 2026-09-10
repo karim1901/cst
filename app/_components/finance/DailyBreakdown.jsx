@@ -84,6 +84,11 @@ export default function DailyBreakdown({ stats }) {
                     {t("finance.costNotConfigured")}
                   </p>
                 ) : null}
+                {day.orderDateMissing > 0 ? (
+                  <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
+                    {day.orderDateMissing} {t("finance.ordersApproxDate")}
+                  </p>
+                ) : null}
 
                 {day.orderRows?.length > 0 ? (
                   <div className="mt-3 space-y-2">
