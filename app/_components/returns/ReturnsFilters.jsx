@@ -2,10 +2,9 @@
 
 import {
   SHIPPING_STATUS_FILTER_VALUES,
-  SHIPPING_STATUS_LABELS,
   RETURN_VALIDATION_FILTER_VALUES,
-  VALIDATION_LABELS,
 } from "@/lib/returns/constants";
+import { useLocale } from "@/app/_components/i18n/LocaleProvider";
 
 /**
  * One pill group — same visual language as
@@ -57,19 +56,36 @@ export default function ReturnsFilters({
   validation,
   onValidationChange,
 }) {
+  const { t } = useLocale();
+
+  // Ordinary descriptive words for the return reason / validation state —
+  // NOT the Livré/Progress/Retour vocabulary (that lives in
+  // lib/orders/status-groups.js and is never translated).
+  const shippingLabels = {
+    all: t("returnsFilters.statusAll"),
+    cancelled: t("returnsFilters.statusCancelled"),
+    refused: t("returnsFilters.statusRefused"),
+    returned: t("returnsFilters.statusReturned"),
+  };
+  const validationLabels = {
+    all: t("returnsFilters.validationAll"),
+    pending: t("returnsFilters.validationPending"),
+    validated: t("returnsFilters.validationValidated"),
+  };
+
   return (
     <div className="flex flex-wrap items-end gap-4">
       <Pills
-        label="Shipping Status"
+        label={t("returnsFilters.shippingStatusGroup")}
         options={SHIPPING_STATUS_FILTER_VALUES}
-        labels={SHIPPING_STATUS_LABELS}
+        labels={shippingLabels}
         value={shippingStatus}
         onChange={onShippingStatusChange}
       />
       <Pills
-        label="Return Status"
+        label={t("returnsFilters.returnStatusGroup")}
         options={RETURN_VALIDATION_FILTER_VALUES}
-        labels={VALIDATION_LABELS}
+        labels={validationLabels}
         value={validation}
         onChange={onValidationChange}
       />

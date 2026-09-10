@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
+import { useLocale } from "@/app/_components/i18n/LocaleProvider";
+
 const FIELD =
   "mt-1 block w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none transition focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 dark:focus:border-zinc-100 dark:focus:ring-zinc-100/10";
 
@@ -18,6 +20,7 @@ function safeNext(value) {
 }
 
 export default function LoginForm() {
+  const { t } = useLocale();
   const router = useRouter();
   const searchParams = useSearchParams();
   const destination = safeNext(searchParams.get("next"));
@@ -46,7 +49,7 @@ export default function LoginForm() {
 
       if (!res.ok) {
         setStatus("error");
-        setError(data.error || "Unable to sign in. Please try again.");
+        setError(data.error || t("auth.unableToSignIn"));
         return;
       }
 
@@ -54,7 +57,7 @@ export default function LoginForm() {
       router.refresh();
     } catch {
       setStatus("error");
-      setError("Network error. Please check your connection and try again.");
+      setError(t("auth.networkError"));
     }
   }
 
@@ -64,7 +67,7 @@ export default function LoginForm() {
     <form onSubmit={handleSubmit} className="space-y-4" noValidate>
       <div>
         <label htmlFor="identifier" className={LABEL}>
-          Email or username
+          {t("auth.emailOrUsername")}
         </label>
         <input
           id="identifier"
@@ -74,13 +77,13 @@ export default function LoginForm() {
           required
           disabled={loading}
           className={FIELD}
-          placeholder="you@example.com or username"
+          placeholder={t("auth.emailOrUsernamePlaceholder")}
         />
       </div>
 
       <div>
         <label htmlFor="password" className={LABEL}>
-          Password
+          {t("auth.password")}
         </label>
         <input
           id="password"
@@ -111,10 +114,10 @@ export default function LoginForm() {
         {loading ? (
           <>
             <Spinner />
-            Signing in…
+            {t("auth.signingIn")}
           </>
         ) : (
-          "Sign in"
+          t("auth.signIn")
         )}
       </button>
     </form>

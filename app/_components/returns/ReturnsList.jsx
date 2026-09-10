@@ -17,14 +17,6 @@ import {
   ORDER_LIFECYCLE_SECTION_VALUES,
 } from "@/lib/returns/constants";
 
-const dateTimeFormatter = new Intl.DateTimeFormat("en-GB", {
-  day: "2-digit",
-  month: "short",
-  year: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-});
-
 const PAGE_SIZE = 20;
 
 // "Delivered"/"Returns" here mean the SAME thing as the Orders page's
@@ -299,13 +291,20 @@ export default function ReturnsList({ employees }) {
 
   return (
     <div>
+      <header className="mb-6">
+        <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+          {t("returns.title")}
+        </h1>
+        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">{t("returns.subtitle")}</p>
+      </header>
+
       <div className="mb-4">
         <ProviderTabs value={provider} onChange={setProvider} />
       </div>
 
       <div
         role="tablist"
-        aria-label="Order section"
+        aria-label={t("orders.orderStatus")}
         className="mb-4 inline-flex flex-wrap gap-1 rounded-xl border border-zinc-200 bg-zinc-100 p-1 dark:border-zinc-800 dark:bg-zinc-900"
       >
         {ORDER_LIFECYCLE_SECTION_VALUES.map((value) => {
@@ -434,7 +433,15 @@ function Row({ label, children }) {
 }
 
 function ReturnCard({ item, section, pending, onValidate, onUnvalidate }) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
+  const fmtDT = (v) =>
+    new Intl.DateTimeFormat(locale === "ar" ? "ar" : "en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(v));
   const providerLabel = t(`providers.${item.provider}`);
   const isValidated = item.returnValidationStatus === "validated";
   // "Validate Return"/"Mark as Pending" and the Pending/Validated badge are
@@ -469,7 +476,7 @@ function ReturnCard({ item, section, pending, onValidate, onUnvalidate }) {
             <StatusBadge status={item.status} />
           ) : (
             <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-semibold text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
-              {item.status || "Unknown"}
+              {item.status || t("returns.unknown")}
             </span>
           )}
           {isReturnsSection ? (
@@ -487,22 +494,25 @@ function ReturnCard({ item, section, pending, onValidate, onUnvalidate }) {
       </div>
 
       <div className="divide-y divide-zinc-100 text-sm dark:divide-zinc-800">
-        <Row label="City">{item.city}</Row>
-        <Row label="Address">{item.address}</Row>
-        <Row label="Price">{item.price != null ? `${item.price} DH` : "—"}</Row>
-        {item.employee ? <Row label="Employee">{item.employee.name}</Row> : null}
-        <Row label="Shipping Company">{providerLabel}</Row>
-        <Row label="Tracking Number">
+        {/* Row VALUES (city, address, employee name, tracking number) are
+            real business data — shown verbatim, never translated. Only the
+            Row LABELS are static UI text. */}
+        <Row label={t("returns.city")}>{item.city}</Row>
+        <Row label={t("returns.address")}>{item.address}</Row>
+        <Row label={t("returns.price")}>{item.price != null ? `${item.price} DH` : "—"}</Row>
+        {item.employee ? <Row label={t("common.employee")}>{item.employee.name}</Row> : null}
+        <Row label={t("providers.shippingCompany")}>{providerLabel}</Row>
+        <Row label={t("returns.trackingNumber")}>
           <span className="break-all font-mono text-xs">{item.trackingNumber}</span>
         </Row>
-        <Row label="Created">{dateTimeFormatter.format(new Date(item.createdAt))}</Row>
-        <Row label="Last Updated">{dateTimeFormatter.format(new Date(item.updatedAt))}</Row>
+        <Row label={t("returns.created")}>{fmtDT(item.createdAt)}</Row>
+        <Row label={t("returns.lastUpdated")}>{fmtDT(item.updatedAt)}</Row>
         {isDeliveredSection && item.deliveredAt ? (
-          <Row label="Delivered At">{dateTimeFormatter.format(new Date(item.deliveredAt))}</Row>
+          <Row label={t("returns.deliveredAt")}>{fmtDT(item.deliveredAt)}</Row>
         ) : null}
         {isReturnsSection && isValidated && item.returnValidatedAt ? (
-          <Row label="Validated At">
-            {dateTimeFormatter.format(new Date(item.returnValidatedAt))}
+          <Row label={t("returns.validatedAt")}>
+            {fmtDT(item.returnValidatedAt)}
             {item.returnValidatedBy?.name ? ` · ${item.returnValidatedBy.name}` : ""}
           </Row>
         ) : null}

@@ -1,5 +1,8 @@
+"use client";
+
 import CitySelect from "@/app/_components/orders/CitySelect";
 import { FIELD, LABEL } from "@/app/_components/orders/shared";
+import { useLocale } from "@/app/_components/i18n/LocaleProvider";
 
 /**
  * The fields every order needs regardless of shipping provider — modelled
@@ -15,11 +18,13 @@ import { FIELD, LABEL } from "@/app/_components/orders/shared";
  * original behaviour exactly (used by Quick Livraison, unchanged).
  */
 export default function OrderBaseFields({ disabled, citySlot }) {
+  const { t } = useLocale();
+
   return (
     <div className="space-y-4">
       <div>
         <label htmlFor="customerName" className={LABEL}>
-          Client name
+          {t("orderForm.clientName")}
         </label>
         <input
           id="customerName"
@@ -28,13 +33,13 @@ export default function OrderBaseFields({ disabled, citySlot }) {
           required
           disabled={disabled}
           className={FIELD}
-          placeholder="Name Client"
+          placeholder={t("orderForm.clientName")}
         />
       </div>
 
       <div>
         <label htmlFor="phone" className={LABEL}>
-          Phone
+          {t("orderForm.phone")}
         </label>
         <input
           id="phone"
@@ -43,15 +48,17 @@ export default function OrderBaseFields({ disabled, citySlot }) {
           required
           disabled={disabled}
           className={FIELD}
-          placeholder="Phone"
+          placeholder={t("orderForm.phone")}
         />
       </div>
 
-      {citySlot ?? <CitySelect id="city" name="city" label="City" required disabled={disabled} />}
+      {citySlot ?? (
+        <CitySelect id="city" name="city" label={t("orderForm.city")} required disabled={disabled} />
+      )}
 
       <div>
         <label htmlFor="address" className={LABEL}>
-          Address
+          {t("orderForm.address")}
         </label>
         <input
           id="address"
@@ -60,13 +67,13 @@ export default function OrderBaseFields({ disabled, citySlot }) {
           required
           disabled={disabled}
           className={FIELD}
-          placeholder="Address"
+          placeholder={t("orderForm.address")}
         />
       </div>
 
       <div>
         <label htmlFor="price" className={LABEL}>
-          Price (DH)
+          {t("orderForm.priceDh")}
         </label>
         <input
           id="price"
@@ -78,13 +85,13 @@ export default function OrderBaseFields({ disabled, citySlot }) {
           required
           disabled={disabled}
           className={FIELD}
-          placeholder="Price"
+          placeholder={t("orderForm.price")}
         />
       </div>
 
       <div>
         <label htmlFor="productName" className={LABEL}>
-          Product name
+          {t("orderForm.productName")}
         </label>
         <input
           id="productName"
@@ -93,7 +100,7 @@ export default function OrderBaseFields({ disabled, citySlot }) {
           required
           disabled={disabled}
           className={FIELD}
-          placeholder="Name Product"
+          placeholder={t("orderForm.productName")}
         />
       </div>
     </div>

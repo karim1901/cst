@@ -5,6 +5,7 @@ import { useState } from "react";
 import OrderBaseFields from "@/app/_components/orders/OrderBaseFields";
 import QuickDistrictSelect from "@/app/_components/orders/QuickDistrictSelect";
 import { ErrorBanner, FIELD, LABEL, Spinner, SuccessBanner } from "@/app/_components/orders/shared";
+import { useLocale } from "@/app/_components/i18n/LocaleProvider";
 
 const REQUIRED_FIELDS = ["customerName", "phone", "city", "address", "price", "productName", "quantity"];
 
@@ -17,6 +18,7 @@ const REQUIRED_FIELDS = ["customerName", "phone", "city", "address", "price", "p
  * see lib/quick/parse.js). See app/api/orders/quick/route.js.
  */
 export default function QuickLivraisonOrderForm() {
+  const { t } = useLocale();
   const [status, setStatus] = useState("idle"); // idle | loading | error | success
   const [error, setError] = useState("");
   const [trackingNumber, setTrackingNumber] = useState("");
@@ -30,7 +32,7 @@ export default function QuickLivraisonOrderForm() {
     const missing = REQUIRED_FIELDS.filter((key) => !String(form.get(key) || "").trim());
     if (missing.length > 0) {
       setStatus("error");
-      setError("Please fill in all required fields.");
+      setError(t("orderForm.fillRequired"));
       return;
     }
 
@@ -58,7 +60,7 @@ export default function QuickLivraisonOrderForm() {
 
       if (!res.ok) {
         setStatus("error");
-        setError(data?.error || "Quick Livraison could not create this order.");
+        setError(data?.error || t("orderForm.quickCreateFailed"));
         return;
       }
 
@@ -67,7 +69,7 @@ export default function QuickLivraisonOrderForm() {
       formEl.reset();
     } catch {
       setStatus("error");
-      setError("Network error. Please check your connection and try again.");
+      setError(t("orderForm.networkError"));
     }
   }
 
@@ -90,7 +92,7 @@ export default function QuickLivraisonOrderForm() {
 
         <div>
           <label htmlFor="quickQuantity" className={LABEL}>
-            Quantity
+            {t("orderForm.quantity")}
           </label>
           <input
             id="quickQuantity"
@@ -107,7 +109,8 @@ export default function QuickLivraisonOrderForm() {
 
         <div>
           <label htmlFor="quickNotes" className={LABEL}>
-            Notes for the courier <span className="font-normal text-zinc-400">(optional)</span>
+            {t("orderForm.notesLabel")}{" "}
+            <span className="font-normal text-zinc-400">{t("orderForm.optional")}</span>
           </label>
           <input
             id="quickNotes"
@@ -115,7 +118,7 @@ export default function QuickLivraisonOrderForm() {
             type="text"
             disabled={loading || succeeded}
             className={FIELD}
-            placeholder="e.g. call before arriving"
+            placeholder={t("orderForm.notesPlaceholder")}
           />
         </div>
       </fieldset>
@@ -123,7 +126,7 @@ export default function QuickLivraisonOrderForm() {
       {error ? <ErrorBanner>{error}</ErrorBanner> : null}
       {succeeded ? (
         <SuccessBanner>
-          Order created — tracking number{" "}
+          {t("orderForm.orderCreated")}{" "}
           <span className="font-mono font-semibold">{trackingNumber}</span>.
         </SuccessBanner>
       ) : null}
@@ -134,7 +137,7 @@ export default function QuickLivraisonOrderForm() {
           onClick={handleCreateAnother}
           className="flex w-full items-center justify-center gap-2 rounded-lg bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
         >
-          Create another order
+          {t("orderForm.createAnother")}
         </button>
       ) : (
         <button
@@ -145,10 +148,10 @@ export default function QuickLivraisonOrderForm() {
           {loading ? (
             <>
               <Spinner />
-              Sending…
+              {t("orderForm.sending")}
             </>
           ) : (
-            "Send Order"
+            t("orderForm.sendOrder")
           )}
         </button>
       )}

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { FIELD, LABEL } from "@/app/_components/orders/shared";
+import { useLocale } from "@/app/_components/i18n/LocaleProvider";
 
 // A plain list for now — no geo API. Enough for the UI demo; swap for a real
 // source (or the shipping provider's own city list) in the backend phase.
@@ -44,6 +45,7 @@ const CITIES = [
  * surrounding `<form>`'s `FormData` exactly like any other input.
  */
 export default function CitySelect({ id, name, label, required, disabled, defaultValue = "" }) {
+  const { t } = useLocale();
   const [value, setValue] = useState(defaultValue);
   const [open, setOpen] = useState(false);
   const containerRef = useRef(null);
@@ -96,7 +98,7 @@ export default function CitySelect({ id, name, label, required, disabled, defaul
             }
           }}
           className={`${FIELD} pr-9`}
-          placeholder="Search city"
+          placeholder={t("orderForm.searchCity")}
         />
         <svg
           aria-hidden="true"

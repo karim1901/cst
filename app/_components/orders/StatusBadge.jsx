@@ -1,6 +1,9 @@
+"use client";
+
 import { statusBadgeTone as ozonStatusBadgeTone } from "@/lib/ozon/status";
 import { genericStatusBadgeTone } from "@/lib/orders/status-groups";
 import { SHIPPING_PROVIDERS } from "@/lib/shipping/providers";
+import { useLocale } from "@/app/_components/i18n/LocaleProvider";
 
 const TONE_CLASSES = {
   red: "bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-300",
@@ -25,6 +28,7 @@ const TONE_CLASSES = {
  * — Ozon's own richer tone function stays untouched and Ozon-only.
  */
 export default function StatusBadge({ status, provider = SHIPPING_PROVIDERS.OZON_EXPRESS }) {
+  const { t } = useLocale();
   const tone =
     provider === SHIPPING_PROVIDERS.OZON_EXPRESS
       ? ozonStatusBadgeTone(status)
@@ -33,7 +37,9 @@ export default function StatusBadge({ status, provider = SHIPPING_PROVIDERS.OZON
     <span
       className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold ${TONE_CLASSES[tone]}`}
     >
-      {status || "Unknown"}
+      {/* `status` is the provider's own status string — real data, shown
+          verbatim; only the empty-value fallback is localised. */}
+      {status || t("returns.unknown")}
     </span>
   );
 }

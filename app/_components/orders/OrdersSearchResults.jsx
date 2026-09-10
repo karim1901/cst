@@ -7,33 +7,41 @@ import { Spinner, ErrorBanner } from "@/app/_components/orders/shared";
 import { useLocale } from "@/app/_components/i18n/LocaleProvider";
 
 /**
- * "All employees" order browsing — reads GET /api/orders (local DB,
- * server-paginated/filtered — see that route's module comment for why this
- * is a separate, DB-backed path rather than N live provider fetches).
- * Merchant-only, mirrors the visual language of OzonOrdersList/
- * QuickOrdersList's cards rather than introducing a table.
+ * Server-side Orders search results (app/api/orders/search) — phone number
+ * or tracking number — rendered as the SAME order cards the rest of the
+ * Orders page uses (DbOrderCard, also used by the "All employees" browser),
+ * not a second order UI.
+ *
+ * The server is authoritative for every constraint (merchant isolation,
+ * provider, month, employee, status); this component only forwards the
+ * current selections and shows what comes back. It never talks to a
+ * provider API, so a slow/failing provider can't hide a result.
  */
-export default function OrdersBrowser({ provider, employeeId, period, status = "all", isFollowedUp, onFollowUpAdded }) {
+export default function OrdersSearchResults({
+  provider,
+  employeeId, // "me" | <id> | undefined  — merchants only; ignored server-side for employees
+  period,
+  status = "all",
+  searchMode,
+  search,
+  isFollowedUp,
+  onFollowUpAdded,
+}) {
   const { t } = useLocale();
   const [state, setState] = useState("loading"); // loading | ready | error
   const [errorMessage, setErrorMessage] = useState("");
   const [data, setData] = useState({ orders: [], page: 1, totalPages: 1, total: 0 });
   const [page, setPage] = useState(1);
 
-  // Reset to page 1 whenever the filters themselves change — same "adjust
-  // state during render" pattern used by the other order-list components in
-  // this folder.
-  const filterKey = `${provider}|${employeeId}|${period}|${status}`;
+  // Reset to page 1 whenever the search/filters change — "adjust state
+  // during render", the same pattern OrdersBrowser uses.
+  const filterKey = `${provider}|${employeeId}|${period}|${status}|${searchMode}|${search}`;
   const [renderedForFilterKey, setRenderedForFilterKey] = useState(filterKey);
   if (filterKey !== renderedForFilterKey) {
     setRenderedForFilterKey(filterKey);
     setPage(1);
   }
 
-  // Back to "loading" whenever what's about to be fetched changes (filters
-  // OR page) — also adjusted during render rather than as a synchronous
-  // setState at the top of the effect below, which React's linter flags as
-  // a cascading-render risk.
   const fetchKey = `${filterKey}|${page}`;
   const [renderedForFetchKey, setRenderedForFetchKey] = useState(fetchKey);
   if (fetchKey !== renderedForFetchKey) {
@@ -44,12 +52,17 @@ export default function OrdersBrowser({ provider, employeeId, period, status = "
   useEffect(() => {
     const controller = new AbortController();
 
-    const params = new URLSearchParams({ provider, page: String(page) });
+    const params = new URLSearchParams({
+      provider,
+      searchMode,
+      search,
+      page: String(page),
+    });
     if (employeeId) params.set("employeeId", employeeId);
     if (period) params.set("period", period);
     if (status && status !== "all") params.set("status", status);
 
-    fetch(`/api/orders?${params.toString()}`, { signal: controller.signal })
+    fetch(`/api/orders/search?${params.toString()}`, { signal: controller.signal })
       .then(async (res) => {
         const body = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(body?.error || t("orders.couldNotLoad"));
@@ -63,13 +76,13 @@ export default function OrdersBrowser({ provider, employeeId, period, status = "
       });
 
     return () => controller.abort();
-  }, [provider, employeeId, period, status, page, t]);
+  }, [provider, employeeId, period, status, searchMode, search, page, t]);
 
   if (state === "loading") {
     return (
       <div className="flex items-center justify-center gap-2 rounded-2xl border border-dashed border-zinc-300 px-6 py-14 text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
         <Spinner />
-        {t("orders.loadingOrders")}
+        {t("orders.searching")}
       </div>
     );
   }
@@ -81,7 +94,7 @@ export default function OrdersBrowser({ provider, employeeId, period, status = "
   if (data.orders.length === 0) {
     return (
       <p className="rounded-2xl border border-dashed border-zinc-300 px-6 py-14 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
-        {t("orders.noOrdersThisPeriod")}
+        {t("orders.noOrdersFound")}
       </p>
     );
   }

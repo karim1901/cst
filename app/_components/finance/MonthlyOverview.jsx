@@ -44,15 +44,14 @@ export default function MonthlyOverview({ stats }) {
       {!totals.profitComplete ? (
         <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300">
           {totals.productCostMissing > 0
-            ? `${totals.productCostMissing} order(s) this month use a product whose cost is not configured yet.`
+            ? `${totals.productCostMissing} ${t("finance.ordersUnconfiguredProduct")}`
             : null}
           {totals.productCostMissing > 0 && totals.shippingCostMissing > 0 ? " " : null}
           {totals.shippingCostMissing > 0
-            ? `${totals.shippingCostMissing} order(s) this month have no resolvable shipping price yet.`
+            ? `${totals.shippingCostMissing} ${t("finance.ordersNoShippingPrice")}`
             : null}
           {" "}
-          {t("finance.costNotConfigured")} — profit below is therefore understated until configured (see
-          Product Costs / Shipping Prices tabs).
+          {t("finance.costNotConfigured")} {t("finance.profitUnderstated")}
         </div>
       ) : null}
 

@@ -95,7 +95,7 @@ export default function FinancePageClient() {
 
       <div
         role="tablist"
-        aria-label="Finance section"
+        aria-label={t("finance.sectionAria")}
         className="mb-4 inline-flex flex-wrap gap-1 rounded-xl border border-zinc-200 bg-zinc-100 p-1 dark:border-zinc-800 dark:bg-zinc-900"
       >
         {TABS.map((id) => (

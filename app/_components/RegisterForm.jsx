@@ -3,12 +3,15 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { useLocale } from "@/app/_components/i18n/LocaleProvider";
+
 const FIELD =
   "mt-1 block w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none transition focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 dark:focus:border-zinc-100 dark:focus:ring-zinc-100/10";
 
 const LABEL = "block text-sm font-medium text-zinc-700 dark:text-zinc-300";
 
 export default function RegisterForm() {
+  const { t } = useLocale();
   const router = useRouter();
 
   const [status, setStatus] = useState("idle"); // idle | loading | error | success
@@ -28,7 +31,7 @@ export default function RegisterForm() {
 
     if (password !== confirmPassword) {
       setStatus("error");
-      setFieldErrors({ confirmPassword: ["Passwords do not match."] });
+      setFieldErrors({ confirmPassword: [t("auth.passwordsNoMatch")] });
       return;
     }
 
@@ -44,7 +47,7 @@ export default function RegisterForm() {
 
       if (!res.ok) {
         setStatus("error");
-        setError(data.error || "Unable to create your account. Please try again.");
+        setError(data.error || t("auth.unableToRegister"));
         setFieldErrors(data.fieldErrors || {});
         return;
       }
@@ -54,7 +57,7 @@ export default function RegisterForm() {
       router.refresh();
     } catch {
       setStatus("error");
-      setError("Network error. Please check your connection and try again.");
+      setError(t("auth.networkError"));
     }
   }
 
@@ -65,7 +68,7 @@ export default function RegisterForm() {
     <form onSubmit={handleSubmit} className="space-y-4" noValidate>
       <div>
         <label htmlFor="name" className={LABEL}>
-          Business / owner name
+          {t("auth.businessOwnerName")}
         </label>
         <input
           id="name"
@@ -75,14 +78,14 @@ export default function RegisterForm() {
           required
           disabled={loading || succeeded}
           className={FIELD}
-          placeholder="Acme Trading Co."
+          placeholder={t("auth.businessNamePlaceholder")}
         />
         <FieldError errors={fieldErrors.name} />
       </div>
 
       <div>
         <label htmlFor="email" className={LABEL}>
-          Email
+          {t("auth.email")}
         </label>
         <input
           id="email"
@@ -92,14 +95,14 @@ export default function RegisterForm() {
           required
           disabled={loading || succeeded}
           className={FIELD}
-          placeholder="you@example.com"
+          placeholder={t("auth.emailPlaceholder")}
         />
         <FieldError errors={fieldErrors.email} />
       </div>
 
       <div>
         <label htmlFor="password" className={LABEL}>
-          Password
+          {t("auth.password")}
         </label>
         <input
           id="password"
@@ -110,14 +113,14 @@ export default function RegisterForm() {
           minLength={8}
           disabled={loading || succeeded}
           className={FIELD}
-          placeholder="At least 8 characters"
+          placeholder={t("auth.passwordPlaceholder")}
         />
         <FieldError errors={fieldErrors.password} />
       </div>
 
       <div>
         <label htmlFor="confirmPassword" className={LABEL}>
-          Confirm password
+          {t("auth.confirmPassword")}
         </label>
         <input
           id="confirmPassword"
@@ -127,7 +130,7 @@ export default function RegisterForm() {
           required
           disabled={loading || succeeded}
           className={FIELD}
-          placeholder="Re-enter your password"
+          placeholder={t("auth.confirmPasswordPlaceholder")}
         />
         <FieldError errors={fieldErrors.confirmPassword} />
       </div>
@@ -146,7 +149,7 @@ export default function RegisterForm() {
           role="status"
           className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-300"
         >
-          Account created. Redirecting to your dashboard…
+          {t("auth.accountCreated")}
         </p>
       ) : null}
 
@@ -158,10 +161,10 @@ export default function RegisterForm() {
         {loading ? (
           <>
             <Spinner />
-            Creating account…
+            {t("auth.creatingAccount")}
           </>
         ) : (
-          "Create merchant account"
+          t("auth.createMerchantAccount")
         )}
       </button>
     </form>

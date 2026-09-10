@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { FIELD, LABEL, BUTTON_PRIMARY, BUTTON_SECONDARY, ALERT_ERROR, Spinner } from "@/app/_components/ui/form";
+import { useLocale } from "@/app/_components/i18n/LocaleProvider";
 
 /**
  * Small note-entry modal, reused for both "Add to Follow-up" (Orders page)
@@ -12,7 +13,9 @@ import { FIELD, LABEL, BUTTON_PRIMARY, BUTTON_SECONDARY, ALERT_ERROR, Spinner } 
  * SidebarNav's mobile drawer backdrop) rather than pulling in a dialog
  * library for one use case.
  */
-export default function NoteModal({ title, description, initialNote = "", saveLabel = "Save", onSave, onClose }) {
+export default function NoteModal({ title, description, initialNote = "", saveLabel, onSave, onClose }) {
+  const { t } = useLocale();
+  const resolvedSaveLabel = saveLabel ?? t("common.save");
   const [note, setNote] = useState(initialNote);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -39,7 +42,7 @@ export default function NoteModal({ title, description, initialNote = "", saveLa
     try {
       await onSave(note.trim());
     } catch (err) {
-      setError(err?.message || "Could not save. Please try again.");
+      setError(err?.message || t("followUp.couldNotSave"));
       setSaving(false);
     }
   }
@@ -63,7 +66,7 @@ export default function NoteModal({ title, description, initialNote = "", saveLa
         ) : null}
 
         <label htmlFor="follow-up-note" className={`mt-4 ${LABEL}`}>
-          Note
+          {t("followUp.note")}
         </label>
         <textarea
           id="follow-up-note"
@@ -81,16 +84,16 @@ export default function NoteModal({ title, description, initialNote = "", saveLa
 
         <div className="mt-5 flex justify-end gap-2">
           <button type="button" onClick={onClose} disabled={saving} className={BUTTON_SECONDARY}>
-            Cancel
+            {t("common.cancel")}
           </button>
           <button type="button" onClick={handleSave} disabled={saving} className={BUTTON_PRIMARY}>
             {saving ? (
               <>
                 <Spinner />
-                Saving…
+                {t("common.saving")}
               </>
             ) : (
-              saveLabel
+              resolvedSaveLabel
             )}
           </button>
         </div>

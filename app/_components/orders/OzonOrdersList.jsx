@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import StatusBadge from "@/app/_components/orders/StatusBadge";
 import MonthSelect from "@/app/_components/orders/MonthSelect";
 import AddToFollowUpButton from "@/app/_components/orders/AddToFollowUpButton";
 import { shouldShowComment } from "@/lib/ozon/status";
 import { Spinner } from "@/app/_components/orders/shared";
+import { useLocale } from "@/app/_components/i18n/LocaleProvider";
 import { periodFor } from "@/lib/tracking/counter";
 import { SHIPPING_PROVIDERS } from "@/lib/shipping/providers";
 
@@ -24,8 +25,11 @@ import { SHIPPING_PROVIDERS } from "@/lib/shipping/providers";
  * is correct regardless of arrival order.
  *
  * Preserves the old implementation's display fields (INFOS.*, numbered
- * history steps, COMMENT) and search-by-phone behaviour (client-side filter
- * over already-fetched orders, same as before).
+ * history steps, COMMENT). Search is NOT done here: the Orders page's
+ * search bar (OrdersPageClient / OrdersSearch) runs a dedicated
+ * server-side query (app/api/orders/search) and renders its own results
+ * instead of this component whenever a search is active — so this list is
+ * only ever the plain, progressively-loaded month view.
  */
 
 // Sort key: the plain numeric id the backend generated this tracking number
@@ -43,10 +47,10 @@ export default function OzonOrdersList({
   period: controlledPeriod,
   onPeriodChange,
   status = "all",
-  initialSearch = "",
   isFollowedUp,
   onFollowUpAdded,
 }) {
+  const { t } = useLocale();
   // Controlled when a parent passes `period` (the merchant Orders page, so
   // its own OrderFilters is the single month picker on screen instead of a
   // second one duplicated in here) — uncontrolled otherwise (the plain
@@ -60,7 +64,6 @@ export default function OzonOrdersList({
   const [warning, setWarning] = useState("");
   const [orders, setOrders] = useState([]);
   const [streamDone, setStreamDone] = useState(false);
-  const [search, setSearch] = useState(initialSearch);
 
   // Reset per-fetch state when the selected month OR the viewed employee
   // changes — done here, during render (React's recommended "adjust state
@@ -170,17 +173,11 @@ export default function OzonOrdersList({
     return () => controller.abort();
   }, [period, employeeId, status]);
 
-  const visible = useMemo(() => {
-    const query = search.trim();
-    if (!query) return orders;
-    return orders.filter((order) => String(order?.INFOS?.PHONE ?? "").includes(query));
-  }, [orders, search]);
-
   if (state === "connecting") {
     return (
       <div className="flex items-center justify-center gap-2 rounded-2xl border border-dashed border-zinc-300 px-6 py-14 text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
         <Spinner />
-        Loading Ozon Express orders…
+        {t("orders.loadingOrders")}
       </div>
     );
   }
@@ -189,11 +186,10 @@ export default function OzonOrdersList({
     return (
       <div className="rounded-2xl border border-dashed border-zinc-300 px-6 py-14 text-center dark:border-zinc-700">
         <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
-          Ozon Express is not configured yet
+          {t("orders.notConfigured")}
         </p>
         <p className="mx-auto mt-1 max-w-sm text-sm text-zinc-500 dark:text-zinc-400">
-          Ask your merchant to add Ozon Express credentials under Shipping Companies before
-          creating or viewing orders.
+          {t("orders.askMerchant")}
         </p>
       </div>
     );
@@ -209,26 +205,18 @@ export default function OzonOrdersList({
 
   return (
     <div>
-      <div className="mb-4 flex flex-col gap-2 sm:flex-row">
-        {!isControlled ? (
+      {!isControlled ? (
+        <div className="mb-4">
           <MonthSelect value={period} onChange={setPeriod} disabled={!streamDone} />
-        ) : null}
-        <input
-          type="search"
-          inputMode="tel"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="Search by phone number"
-          className="h-10 w-full rounded-lg border border-zinc-300 bg-white px-4 text-sm text-zinc-900 shadow-sm outline-none transition focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 dark:focus:border-zinc-100 dark:focus:ring-zinc-100/10"
-        />
-      </div>
+        </div>
+      ) : null}
 
       {!streamDone ? (
         <div className="mb-4 flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
           <Spinner />
           {orders.length > 0
-            ? `${orders.length} order${orders.length === 1 ? "" : "s"} loaded — loading more…`
-            : "Looking for orders…"}
+            ? `${orders.length} ${orders.length === 1 ? t("common.order") : t("common.orders")} ${t("orders.loadingMore")}`
+            : t("orders.lookingForOrders")}
         </div>
       ) : warning ? (
         <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-300">
@@ -236,17 +224,13 @@ export default function OzonOrdersList({
         </p>
       ) : null}
 
-      {visible.length === 0 ? (
+      {orders.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-zinc-300 px-6 py-14 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
-          {orders.length > 0
-            ? "No orders match this phone number."
-            : streamDone
-              ? "No orders yet."
-              : "Looking for orders…"}
+          {streamDone ? t("orders.noOrdersYet") : t("orders.lookingForOrders")}
         </p>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {visible.map((order, index) => (
+          {orders.map((order, index) => (
             <OrderCard
               key={order?.INFOS?.["TRACKING-NUMBER"] ?? index}
               order={order}

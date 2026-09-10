@@ -1,6 +1,7 @@
 "use client";
 
 import { ORDER_STATUS_FILTER_VALUES, STATUS_FILTER_LABELS } from "@/lib/orders/status-groups";
+import { useLocale } from "@/app/_components/i18n/LocaleProvider";
 
 /**
  * Which of the 4 status buckets (see lib/orders/status-groups.js) the
@@ -12,13 +13,15 @@ import { ORDER_STATUS_FILTER_VALUES, STATUS_FILTER_LABELS } from "@/lib/orders/s
  *
  * Labels come from lib/orders/status-groups.js#STATUS_FILTER_LABELS — the
  * ONE source of truth for "Tous"/"Livré"/"Progress"/"Retour", NEVER routed
- * through i18n/translated (see that constant's own comment).
+ * through i18n/translated (see that constant's own comment). Only the
+ * wrapper's aria-label (not shown on screen) is localised.
  */
 export default function StatusFilter({ value, onChange }) {
+  const { t } = useLocale();
   return (
     <div
       role="tablist"
-      aria-label="Order status"
+      aria-label={t("orders.orderStatus")}
       className="inline-flex flex-wrap gap-1 rounded-xl border border-zinc-200 bg-zinc-100 p-1 dark:border-zinc-800 dark:bg-zinc-900"
     >
       {ORDER_STATUS_FILTER_VALUES.map((id) => {

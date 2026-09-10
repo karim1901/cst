@@ -1,49 +1,61 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
 import ProviderTabs from "@/app/_components/orders/ProviderTabs";
 import StatusFilter from "@/app/_components/orders/StatusFilter";
 import OrderFilters from "@/app/_components/orders/OrderFilters";
+import MonthSelect from "@/app/_components/orders/MonthSelect";
+import OrdersSearch from "@/app/_components/orders/OrdersSearch";
+import OrdersSearchResults from "@/app/_components/orders/OrdersSearchResults";
 import OrdersBrowser from "@/app/_components/orders/OrdersBrowser";
 import OzonOrdersList from "@/app/_components/orders/OzonOrdersList";
 import QuickOrdersList from "@/app/_components/orders/QuickOrdersList";
+import { useLocale } from "@/app/_components/i18n/LocaleProvider";
 import { SHIPPING_PROVIDERS, SHIPPING_PROVIDER_VALUES } from "@/lib/shipping/providers";
 import { periodFor } from "@/lib/tracking/counter";
+import { ORDER_SEARCH_MODES } from "@/lib/orders/search";
 
 function followUpKey(provider, trackingNumber) {
   return `${provider}|${trackingNumber}`;
 }
 
+const SEARCH_DEBOUNCE_MS = 350;
+
 /**
  * Composes the Orders page: a provider tab switcher and status filter
- * (everyone), plus — merchants only — an employee/month filter and the
- * Follow-up "add"/"already added" affordance on every card. See
- * app/dashboard/orders/page.jsx for the server-side data (employees list)
- * this receives, and this folder's ProviderTabs/StatusFilter/OrderFilters/
- * OrdersBrowser for the pieces.
+ * (everyone), a month picker, a two-mode search bar (phone / tracking), and
+ * — merchants only — an employee filter, plus the Follow-up "add" affordance
+ * on every card.
  *
- * `employeeFilter` drives which data source is used:
- *   "me"          -> the caller's own live tracking sequence (existing
- *                    OzonOrdersList/QuickOrdersList, unchanged behavior).
- *   one employeeId -> that employee's own live tracking sequence (same
- *                    components, now pointed at a different actor via the
- *                    `employeeId` prop — see those routes' own comments).
- *   "all"         -> every employee, from the local DB (OrdersBrowser) —
- *                    live-fetching every employee one by one would be slow.
+ * The search bar is authoritative when it has a value: it replaces the
+ * normal listing with server-side results (app/api/orders/search) that
+ * respect the SAME provider / month / employee / status selections. Clearing
+ * it restores the normal filtered list with every other selection intact.
+ * The live progressive lists (OzonOrdersList / QuickOrdersList) and the
+ * local-DB "All employees" browser (OrdersBrowser) are unchanged — they
+ * only render while no search is active.
+ *
+ * `employeeFilter` drives which data source the NON-search view uses:
+ *   "me"          -> the caller's own live tracking sequence.
+ *   one employeeId -> that employee's own live tracking sequence.
+ *   "all"         -> every employee, from the local DB (OrdersBrowser).
  */
 export default function OrdersPageClient({ isMerchant, employees }) {
-  // Deep-link support for Follow-up's "Open Order" (open the original order) —
-  // see app/_components/track/FollowUpList.jsx, which links here with
-  // `?provider=&employee=&phone=` instead of building a second order-detail
-  // view. Read once, on mount, as plain initial state (not kept in sync
-  // afterwards) — this only ever seeds where the page starts, the filters
-  // stay normal interactive React state from then on.
+  const { t } = useLocale();
+
+  // Deep-link seed, read once on mount (not kept in sync afterwards) — same
+  // as this page has always done for Follow-up's "Open Order"
+  // (?provider=&employee=&phone=). Now also seeds the search bar: an
+  // explicit ?search=&searchMode=, or the legacy ?phone= alias.
   const searchParams = useSearchParams();
   const initialProvider = searchParams.get("provider");
   const initialEmployee = searchParams.get("employee");
-  const initialPhone = searchParams.get("phone");
+  const legacyPhone = searchParams.get("phone");
+  const urlSearch = searchParams.get("search");
+  const urlSearchMode = searchParams.get("searchMode");
 
   const [provider, setProvider] = useState(
     initialProvider && SHIPPING_PROVIDER_VALUES.includes(initialProvider)
@@ -56,12 +68,55 @@ export default function OrdersPageClient({ isMerchant, employees }) {
   const [period, setPeriod] = useState(() => periodFor());
   const [status, setStatus] = useState("all");
 
-  // The merchant's own Follow-up set — fetched once (not per card, not per
-  // filter change) so every order card across all three listing surfaces
-  // can show "Added to Follow-up" vs. "Add to Follow-up" without an extra
-  // request each. Employees never see this feature (see app/api/order-followups/
-  // route.js's module comment), so `null` for them — every card treats a
-  // `null` set as "don't render the follow-up affordance at all".
+  // --- search state --------------------------------------------------
+  const seededValue = (urlSearch ?? legacyPhone ?? "").trim();
+  const [searchMode, setSearchMode] = useState(
+    ORDER_SEARCH_MODES.includes(urlSearchMode) ? urlSearchMode : "phone"
+  );
+  const [searchInput, setSearchInput] = useState(seededValue);
+  // The debounced/submitted value actually sent to the server.
+  const [searchQuery, setSearchQuery] = useState(seededValue);
+
+  // Debounce typing -> query (Enter / Clear / mode-change bypass this).
+  useEffect(() => {
+    const id = setTimeout(() => setSearchQuery(searchInput.trim()), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(id);
+  }, [searchInput]);
+
+  // Keep the search in the URL so a refresh preserves it — the same
+  // seed-from-URL contract this page already uses for provider/employee,
+  // via replaceState so it doesn't push history or refetch anything else.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (searchQuery) {
+      params.set("search", searchQuery);
+      params.set("searchMode", searchMode);
+    } else {
+      params.delete("search");
+      params.delete("searchMode");
+    }
+    params.delete("phone"); // legacy alias — normalise onto ?search
+    const qs = params.toString();
+    window.history.replaceState(null, "", qs ? `?${qs}` : window.location.pathname);
+  }, [searchQuery, searchMode]);
+
+  function handleSearchSubmit() {
+    setSearchQuery(searchInput.trim());
+  }
+  function handleSearchModeChange(nextMode) {
+    setSearchMode(nextMode);
+    // Re-run immediately in the new mode if there's something to search for.
+    if (searchInput.trim()) setSearchQuery(searchInput.trim());
+  }
+  function handleSearchClear() {
+    setSearchInput("");
+    setSearchQuery("");
+  }
+
+  const isSearching = searchQuery.length > 0;
+
+  // --- Follow-up set (merchant only), fetched once ------------------
   const [followUpKeys, setFollowUpKeys] = useState(null);
 
   useEffect(() => {
@@ -80,10 +135,7 @@ export default function OrdersPageClient({ isMerchant, employees }) {
       })
       .catch((error) => {
         if (error?.name !== "AbortError") {
-          // A follow-up-status hiccup must never break the Orders page —
-          // the "add" button just won't know it's already added until the
-          // next successful load; adding again is still safe (see the
-          // API's own duplicate-prevention, not just this client hint).
+          // A follow-up-status hiccup must never break the Orders page.
         }
       });
     return () => controller.abort();
@@ -101,14 +153,37 @@ export default function OrdersPageClient({ isMerchant, employees }) {
     });
   }
 
-  const viewingEmployeeId = employeeFilter !== "me" && employeeFilter !== "all" ? employeeFilter : null;
+  const viewingEmployeeId =
+    employeeFilter !== "me" && employeeFilter !== "all" ? employeeFilter : null;
 
   const followUpProps = isMerchant
     ? { followUpSet: followUpKeys, isFollowedUp, onFollowUpAdded: handleFollowUpAdded }
     : { followUpSet: null, isFollowedUp: () => false, onFollowUpAdded: undefined };
 
+  // Which employee scope the search endpoint should apply (merchants only —
+  // an employee is always scoped to themselves server-side). "all" -> send
+  // nothing (every employee); "me" or an id -> send it.
+  const searchEmployeeId = isMerchant && employeeFilter !== "all" ? employeeFilter : undefined;
+
   return (
     <div>
+      <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+            {t("orders.title")}
+          </h1>
+          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+            {isMerchant ? t("orders.subtitleMerchant") : t("orders.subtitleEmployee")}
+          </p>
+        </div>
+        <Link
+          href="/dashboard/orders/new"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+        >
+          {t("orders.addOrder")}
+        </Link>
+      </header>
+
       <div className="mb-4 flex flex-col gap-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
           <ProviderTabs value={provider} onChange={setProvider} />
@@ -122,10 +197,30 @@ export default function OrdersPageClient({ isMerchant, employees }) {
             period={period}
             onPeriodChange={setPeriod}
           />
-        ) : null}
+        ) : (
+          <MonthSelect value={period} onChange={setPeriod} />
+        )}
+        <OrdersSearch
+          mode={searchMode}
+          value={searchInput}
+          onModeChange={handleSearchModeChange}
+          onValueChange={setSearchInput}
+          onSubmit={handleSearchSubmit}
+          onClear={handleSearchClear}
+        />
       </div>
 
-      {isMerchant && employeeFilter === "all" ? (
+      {isSearching ? (
+        <OrdersSearchResults
+          provider={provider}
+          employeeId={searchEmployeeId}
+          period={period}
+          status={status}
+          searchMode={searchMode}
+          search={searchQuery}
+          {...followUpProps}
+        />
+      ) : isMerchant && employeeFilter === "all" ? (
         <OrdersBrowser
           provider={provider}
           employeeId={null}
@@ -136,19 +231,17 @@ export default function OrdersPageClient({ isMerchant, employees }) {
       ) : provider === SHIPPING_PROVIDERS.OZON_EXPRESS ? (
         <OzonOrdersList
           employeeId={viewingEmployeeId}
-          period={isMerchant ? period : undefined}
-          onPeriodChange={isMerchant ? setPeriod : undefined}
+          period={period}
+          onPeriodChange={setPeriod}
           status={status}
-          initialSearch={initialPhone || undefined}
           {...followUpProps}
         />
       ) : (
         <QuickOrdersList
           employeeId={viewingEmployeeId}
-          period={isMerchant ? period : undefined}
-          onPeriodChange={isMerchant ? setPeriod : undefined}
+          period={period}
+          onPeriodChange={setPeriod}
           status={status}
-          initialSearch={initialPhone || undefined}
           {...followUpProps}
         />
       )}

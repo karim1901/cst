@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 
@@ -6,8 +5,9 @@ import { getCurrentUser } from "@/lib/auth/current-user";
 import { USER_ROLES } from "@/models/User";
 import { listEmployeesForMerchant } from "@/lib/employees";
 import OrdersPageClient from "@/app/_components/orders/OrdersPageClient";
+import { localizedTitle } from "@/lib/i18n/metadata";
 
-export const metadata = { title: "Orders" };
+export const generateMetadata = localizedTitle("nav.orders");
 export const dynamic = "force-dynamic";
 
 export default async function OrdersPage() {
@@ -29,27 +29,11 @@ export default async function OrdersPage() {
   return (
     <div className="px-4 py-10 sm:px-8">
       <div className="mx-auto w-full max-w-4xl">
-        <header className="mb-6 flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-              Orders
-            </h1>
-            <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-              {isMerchant
-                ? "Browse your own orders, one employee's, or all of them — by shipping company and month."
-                : "Your orders, live from the shipping company you select."}
-            </p>
-          </div>
-          <Link
-            href="/dashboard/orders/new"
-            className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-zinc-800 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
-          >
-            Add Order
-          </Link>
-        </header>
-
-        {/* OrdersPageClient reads useSearchParams() (Follow-up's "Open
-            Order" deep link — see that component's own comment), which
+        {/* Header lives INSIDE the client component now so it renders in
+            the active locale (it's an async server component here — it
+            can't call useLocale()). This was the root cause of the
+            "sidebar Arabic, page English" bug. OrdersPageClient also reads
+            useSearchParams() (Follow-up's "Open Order" deep link), which
             Next.js requires a Suspense boundary for even on a fully
             dynamic page. */}
         <Suspense fallback={null}>

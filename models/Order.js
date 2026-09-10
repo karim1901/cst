@@ -156,6 +156,15 @@ orderSchema.index({ employeeId: 1, createdAt: -1 });
 // A tracking number is unique per provider (not globally — two different
 // providers could coincidentally format one the same way).
 orderSchema.index({ provider: 1, trackingNumber: 1 }, { unique: true });
+// Orders-page server-side search (app/api/orders/search/route.js): within
+// ONE merchant + ONE provider, look an order up by an anchored
+// tracking-number prefix (exact "user202609011014" or partial
+// "user20260901") or by phone. Both are highly selective inside a single
+// merchant+provider; the employee-scoped variant of each query adds
+// `employeeId` as a residual match on the already-tiny result, so a
+// separate {merchantId, provider, employeeId, …} index is not warranted.
+orderSchema.index({ merchantId: 1, provider: 1, trackingNumber: 1 });
+orderSchema.index({ merchantId: 1, provider: 1, phone: 1 });
 // Commission calculation's own access pattern — see lib/commission/report.js:
 // "this employee's orders whose tracking number encodes the selected month
 // (an anchored regex on `numericTrackingNumber`, which this index serves)

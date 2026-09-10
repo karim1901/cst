@@ -96,6 +96,13 @@ export default function FollowUpList() {
 
   return (
     <div>
+      <header className="mb-6">
+        <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+          {t("followUp.title")}
+        </h1>
+        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">{t("followUp.subtitle")}</p>
+      </header>
+
       <div className="mb-4">
         <ProviderTabs value={provider} onChange={setProvider} />
       </div>
@@ -188,22 +195,26 @@ function FollowUpCard({ item, onEdit, onDelete }) {
           <StatusBadge status={order?.status} />
         ) : (
           <span className="shrink-0 rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-semibold text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
-            {order?.status || "Unknown"}
+            {order?.status || t("returns.unknown")}
           </span>
         )}
       </div>
 
       <div className="divide-y divide-zinc-100 text-sm dark:divide-zinc-800">
-        <Row label="Provider">{providerLabel}</Row>
-        <Row label="Tracking">
+        <Row label={t("followUp.provider")}>{providerLabel}</Row>
+        <Row label={t("followUp.tracking")}>
           <span className="break-all font-mono text-xs">{order?.trackingNumber ?? "—"}</span>
         </Row>
-        <Row label="Price">{order?.price != null ? `${order.price} DH` : "—"}</Row>
-        {item.employee ? <Row label="Employee">{item.employee.name}</Row> : null}
+        <Row label={t("followUp.price")}>
+          {order?.price != null ? `${order.price} DH` : "—"}
+        </Row>
+        {item.employee ? (
+          <Row label={t("common.employee")}>{item.employee.name}</Row>
+        ) : null}
       </div>
 
       <div className="mt-3 rounded-xl bg-zinc-50 p-3 dark:bg-zinc-800/60">
-        <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Note</p>
+        <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">{t("followUp.note")}</p>
         <p className="mt-1 whitespace-pre-wrap break-words text-sm text-zinc-800 dark:text-zinc-200" dir="auto">
           {item.note || "—"}
         </p>

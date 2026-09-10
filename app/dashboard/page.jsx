@@ -5,8 +5,9 @@ import { USER_ROLES } from "@/models/User";
 import DashboardHeader from "@/app/_components/dashboard/DashboardHeader";
 import DashboardStats from "@/app/_components/dashboard/DashboardStats";
 import DashboardQuickLinks from "@/app/_components/dashboard/DashboardQuickLinks";
+import { localizedTitle } from "@/lib/i18n/metadata";
 
-export const metadata = { title: "Dashboard" };
+export const generateMetadata = localizedTitle("nav.dashboard");
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {

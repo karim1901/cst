@@ -30,27 +30,33 @@ import { SHIPPING_PROVIDERS } from "@/lib/shipping/providers";
  * differs; neither reads/derives its numbers independently.
  */
 
-const dateFormatter = new Intl.DateTimeFormat("en-GB", {
-  day: "2-digit",
-  month: "short",
-  year: "numeric",
-});
-
 const money = (value) => `${Number(value ?? 0).toLocaleString("en-US")} DH`;
 
-/** "202608" -> "August 2026" — display only, shown on each mobile card so the selected month reads on its own without scrolling back up to the picker. */
-function periodLabel(period) {
+/** Locale-aware short date ("09 Sep 2026" / Arabic equivalent) — the
+ * VALUE (`order.deliveredAt`) is a real timestamp; only its rendering is
+ * localized. */
+function fmtDate(value, locale) {
+  return new Intl.DateTimeFormat(locale === "ar" ? "ar" : "en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(value));
+}
+
+/** "202608" -> "August 2026" (locale-aware) — display only, shown on each mobile card so the selected month reads on its own without scrolling back up to the picker. */
+function periodLabel(period, locale) {
   const year = Number(period.slice(0, 4));
   const monthIndex = Number(period.slice(4, 6)) - 1;
   if (!Number.isFinite(year) || !Number.isFinite(monthIndex)) return period;
-  return new Date(year, monthIndex, 1).toLocaleDateString("en-US", {
+  return new Intl.DateTimeFormat(locale === "ar" ? "ar" : "en-US", {
     month: "long",
     year: "numeric",
-  });
+  }).format(new Date(year, monthIndex, 1));
 }
 
-export default function CommissionTable({ emptyStateMessage = "No employees yet." }) {
+export default function CommissionTable({ isEmployee = false }) {
   const { t } = useLocale();
+  const emptyStateMessage = isEmployee ? t("commission.noDataThisMonth") : t("commission.noEmployees");
   const [provider, setProvider] = useState(SHIPPING_PROVIDERS.OZON_EXPRESS);
   const [period, setPeriod] = useState(() => periodFor());
   const [state, setState] = useState("loading"); // loading | ready | error
@@ -97,6 +103,15 @@ export default function CommissionTable({ emptyStateMessage = "No employees yet.
 
   return (
     <div>
+      <header className="mb-6">
+        <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+          {t("commission.title")}
+        </h1>
+        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+          {isEmployee ? t("commission.subtitleEmployee") : t("commission.subtitleMerchant")}
+        </p>
+      </header>
+
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <ProviderTabs value={provider} onChange={setProvider} />
         <div className="flex items-center gap-3">
@@ -131,13 +146,13 @@ export default function CommissionTable({ emptyStateMessage = "No employees yet.
               <thead className="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400">
                 <tr>
                   <th className="sticky left-0 z-1 bg-zinc-50 px-4 py-3 font-medium dark:bg-zinc-900">
-                    Employee
+                    {t("commission.employee")}
                   </th>
-                  <th className="px-4 py-3 font-medium text-right">Delivered</th>
-                  <th className="px-4 py-3 font-medium text-right">Units</th>
-                  <th className="px-4 py-3 font-medium text-right">Threshold</th>
-                  <th className="px-4 py-3 font-medium text-right">Rate</th>
-                  <th className="px-4 py-3 font-medium text-right">Total</th>
+                  <th className="px-4 py-3 font-medium text-right">{t("commission.delivered")}</th>
+                  <th className="px-4 py-3 font-medium text-right">{t("commission.units")}</th>
+                  <th className="px-4 py-3 font-medium text-right">{t("commission.threshold")}</th>
+                  <th className="px-4 py-3 font-medium text-right">{t("commission.rate")}</th>
+                  <th className="px-4 py-3 font-medium text-right">{t("commission.total")}</th>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
@@ -213,6 +228,7 @@ function StatRow({ label, value, emphasized }) {
 }
 
 function EmployeeCard({ employee, period, expanded, onToggle }) {
+  const { t, locale } = useLocale();
   return (
     <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
       <div className="flex items-start justify-between gap-3 p-4">
@@ -221,6 +237,7 @@ function EmployeeCard({ employee, period, expanded, onToggle }) {
             <PersonIcon />
           </span>
           <div className="min-w-0">
+            {/* Real employee name / username — never translated. */}
             <p className="truncate text-sm font-semibold text-zinc-900 dark:text-zinc-50">
               {employee.employeeName}
             </p>
@@ -228,22 +245,22 @@ function EmployeeCard({ employee, period, expanded, onToggle }) {
           </div>
         </div>
         <span className="shrink-0 rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
-          {periodLabel(period)}
+          {periodLabel(period, locale)}
         </span>
       </div>
 
       {!employee.configured ? (
         <p className="border-t border-zinc-100 px-4 py-4 text-sm text-zinc-400 dark:border-zinc-800">
-          Commission not configured
+          {t("commission.notConfigured")}
         </p>
       ) : (
         <>
           <div className="divide-y divide-zinc-100 border-t border-zinc-100 px-4 dark:divide-zinc-800/80 dark:border-zinc-800">
-            <StatRow label="Delivered" value={employee.deliveredOrders} />
-            <StatRow label="Units" value={employee.commissionUnits} />
-            <StatRow label="Threshold" value={employee.threshold} />
-            <StatRow label="Rate" value={money(employee.commissionRate)} />
-            <StatRow label="Total" value={money(employee.totalCommission)} emphasized />
+            <StatRow label={t("commission.delivered")} value={employee.deliveredOrders} />
+            <StatRow label={t("commission.units")} value={employee.commissionUnits} />
+            <StatRow label={t("commission.threshold")} value={employee.threshold} />
+            <StatRow label={t("commission.rate")} value={money(employee.commissionRate)} />
+            <StatRow label={t("commission.total")} value={money(employee.totalCommission)} emphasized />
           </div>
 
           <button
@@ -252,7 +269,7 @@ function EmployeeCard({ employee, period, expanded, onToggle }) {
             aria-expanded={expanded}
             className="flex w-full items-center justify-center gap-1.5 border-t border-zinc-100 py-3 text-sm font-medium text-zinc-700 transition active:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-300 dark:active:bg-zinc-800"
           >
-            {expanded ? "Hide orders" : "View orders"}
+            {expanded ? t("commission.hideOrders") : t("commission.viewOrders")}
             <span aria-hidden="true" className={`transition-transform ${expanded ? "rotate-180" : ""}`}>
               ▾
             </span>
@@ -262,7 +279,7 @@ function EmployeeCard({ employee, period, expanded, onToggle }) {
             <div className="border-t border-zinc-100 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-900/60">
               {employee.orders.length === 0 ? (
                 <p className="px-1 py-2 text-sm text-zinc-500 dark:text-zinc-400">
-                  No delivered orders this month.
+                  {t("commission.noDeliveredThisMonth")}
                 </p>
               ) : (
                 <div className="space-y-2">
@@ -280,18 +297,21 @@ function EmployeeCard({ employee, period, expanded, onToggle }) {
 }
 
 function MobileOrderRow({ order }) {
+  const { t, locale } = useLocale();
   return (
     <div className="rounded-xl border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-950">
       <div className="mb-1.5 flex items-center justify-between gap-2">
+        {/* Real tracking number — never translated. */}
         <span className="min-w-0 truncate font-mono text-xs text-zinc-700 dark:text-zinc-300">
           {order.trackingNumber}
         </span>
       </div>
       <div className="flex items-center justify-between text-xs text-zinc-500 dark:text-zinc-400">
-        <span>{dateFormatter.format(new Date(order.deliveredAt))}</span>
+        <span>{fmtDate(order.deliveredAt, locale)}</span>
         <span className="tabular-nums text-zinc-700 dark:text-zinc-300">{money(order.price)}</span>
         <span className="tabular-nums font-semibold text-zinc-900 dark:text-zinc-50">
-          {order.commissionUnits} unit{order.commissionUnits === 1 ? "" : "s"}
+          {order.commissionUnits}{" "}
+          {order.commissionUnits === 1 ? t("commission.unitSuffix") : t("commission.unitsSuffix")}
         </span>
       </div>
     </div>
@@ -299,6 +319,7 @@ function MobileOrderRow({ order }) {
 }
 
 function EmployeeRows({ employee, expanded, onToggle }) {
+  const { t, locale } = useLocale();
   if (!employee.configured) {
     return (
       <tr>
@@ -307,7 +328,7 @@ function EmployeeRows({ employee, expanded, onToggle }) {
           <span className="ml-2 text-xs font-normal text-zinc-400">@{employee.username}</span>
         </td>
         <td colSpan={6} className="px-4 py-3 text-right text-xs text-zinc-400">
-          Commission not configured
+          {t("commission.notConfigured")}
         </td>
       </tr>
     );
@@ -345,17 +366,17 @@ function EmployeeRows({ employee, expanded, onToggle }) {
           <td colSpan={7} className="bg-zinc-50 px-4 py-3 dark:bg-zinc-900/60">
             {employee.orders.length === 0 ? (
               <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                No delivered orders this month.
+                {t("commission.noDeliveredThisMonth")}
               </p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full min-w-120 text-left text-xs">
                   <thead className="text-zinc-500 dark:text-zinc-400">
                     <tr>
-                      <th className="py-1.5 pr-3 font-medium">Tracking</th>
-                      <th className="py-1.5 pr-3 font-medium">Delivered</th>
-                      <th className="py-1.5 pr-3 font-medium text-right">Price</th>
-                      <th className="py-1.5 pr-3 font-medium text-right">Units</th>
+                      <th className="py-1.5 pr-3 font-medium">{t("commission.tracking")}</th>
+                      <th className="py-1.5 pr-3 font-medium">{t("commission.delivered")}</th>
+                      <th className="py-1.5 pr-3 font-medium text-right">{t("commission.price")}</th>
+                      <th className="py-1.5 pr-3 font-medium text-right">{t("commission.units")}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
@@ -365,7 +386,7 @@ function EmployeeRows({ employee, expanded, onToggle }) {
                           {order.trackingNumber}
                         </td>
                         <td className="py-1.5 pr-3 text-zinc-500 dark:text-zinc-400">
-                          {dateFormatter.format(new Date(order.deliveredAt))}
+                          {fmtDate(order.deliveredAt, locale)}
                         </td>
                         <td className="py-1.5 pr-3 text-right tabular-nums text-zinc-700 dark:text-zinc-300">
                           {money(order.price)}

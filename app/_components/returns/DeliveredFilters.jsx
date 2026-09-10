@@ -1,6 +1,7 @@
 "use client";
 
-import { DELIVERY_DATE_FILTER_VALUES, DELIVERY_DATE_FILTER_LABELS } from "@/lib/returns/constants";
+import { DELIVERY_DATE_FILTER_VALUES } from "@/lib/returns/constants";
+import { useLocale } from "@/app/_components/i18n/LocaleProvider";
 
 // Same select styling convention as app/_components/orders/OrderFilters.jsx/
 // MonthSelect.jsx, reused here rather than introducing a new input style.
@@ -37,16 +38,27 @@ export default function DeliveredFilters({
   customEnd,
   onCustomEndChange,
 }) {
+  const { t } = useLocale();
+
+  const dateLabels = {
+    all: t("returnsFilters.dateAll"),
+    today: t("returnsFilters.dateToday"),
+    yesterday: t("returnsFilters.dateYesterday"),
+    last7: t("returnsFilters.dateLast7"),
+    customDate: t("returnsFilters.dateCustomDate"),
+    customRange: t("returnsFilters.dateCustomRange"),
+  };
+
   return (
     <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
-      <Field label="Employee">
+      <Field label={t("returnsFilters.employee")}>
         <select
-          aria-label="Employee"
+          aria-label={t("returnsFilters.employee")}
           value={employeeId ?? ""}
           onChange={(event) => onEmployeeChange(event.target.value || null)}
           className={SELECT}
         >
-          <option value="">All Employees</option>
+          <option value="">{t("returnsFilters.allEmployees")}</option>
           {employees.map((employee) => (
             <option key={employee.id} value={employee.id}>
               {employee.name}
@@ -55,26 +67,26 @@ export default function DeliveredFilters({
         </select>
       </Field>
 
-      <Field label="Delivery Date">
+      <Field label={t("returnsFilters.deliveryDate")}>
         <select
-          aria-label="Delivery Date"
+          aria-label={t("returnsFilters.deliveryDate")}
           value={deliveryDate}
           onChange={(event) => onDeliveryDateChange(event.target.value)}
           className={SELECT}
         >
           {DELIVERY_DATE_FILTER_VALUES.map((value) => (
             <option key={value} value={value}>
-              {DELIVERY_DATE_FILTER_LABELS[value]}
+              {dateLabels[value] ?? value}
             </option>
           ))}
         </select>
       </Field>
 
       {deliveryDate === "customDate" ? (
-        <Field label="Date">
+        <Field label={t("returnsFilters.date")}>
           <input
             type="date"
-            aria-label="Custom delivery date"
+            aria-label={t("returnsFilters.customDeliveryDate")}
             value={customDate}
             onChange={(event) => onCustomDateChange(event.target.value)}
             className={SELECT}
@@ -84,19 +96,19 @@ export default function DeliveredFilters({
 
       {deliveryDate === "customRange" ? (
         <>
-          <Field label="From">
+          <Field label={t("returnsFilters.from")}>
             <input
               type="date"
-              aria-label="Custom range start"
+              aria-label={t("returnsFilters.customRangeStart")}
               value={customStart}
               onChange={(event) => onCustomStartChange(event.target.value)}
               className={SELECT}
             />
           </Field>
-          <Field label="To">
+          <Field label={t("returnsFilters.to")}>
             <input
               type="date"
-              aria-label="Custom range end"
+              aria-label={t("returnsFilters.customRangeEnd")}
               value={customEnd}
               onChange={(event) => onCustomEndChange(event.target.value)}
               className={SELECT}

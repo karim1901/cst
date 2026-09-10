@@ -3,8 +3,9 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { USER_ROLES } from "@/models/User";
 import CommissionTable from "@/app/_components/commission/CommissionTable";
+import { localizedTitle } from "@/lib/i18n/metadata";
 
-export const metadata = { title: "Commission" };
+export const generateMetadata = localizedTitle("nav.commission");
 export const dynamic = "force-dynamic";
 
 export default async function CommissionPage() {
@@ -28,22 +29,10 @@ export default async function CommissionPage() {
   return (
     <div className="px-4 py-10 sm:px-8">
       <div className="mx-auto w-full max-w-4xl">
-        <header className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-            Commission
-          </h1>
-          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-            {isEmployee
-              ? "Your monthly commission, calculated from your delivered orders."
-              : "Monthly commission per employee, calculated from delivered orders."}
-          </p>
-        </header>
-
-        <CommissionTable
-          emptyStateMessage={
-            isEmployee ? "No commission data yet for the selected month." : "No employees yet."
-          }
-        />
+        {/* Header + empty-state text render INSIDE CommissionTable (a
+            client component) so they follow the active locale — this
+            server component can't call useLocale(). */}
+        <CommissionTable isEmployee={isEmployee} />
       </div>
     </div>
   );

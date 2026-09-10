@@ -3,8 +3,9 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { USER_ROLES } from "@/models/User";
 import FinancePageClient from "@/app/_components/finance/FinancePageClient";
+import { localizedTitle } from "@/lib/i18n/metadata";
 
-export const metadata = { title: "Advertising & Profit" };
+export const generateMetadata = localizedTitle("nav.finance");
 export const dynamic = "force-dynamic";
 
 /**

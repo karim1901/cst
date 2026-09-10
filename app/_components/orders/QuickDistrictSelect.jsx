@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { FIELD, LABEL } from "@/app/_components/orders/shared";
+import { useLocale } from "@/app/_components/i18n/LocaleProvider";
 
 /**
  * Quick Livraison's city/district combobox. Like Ozon Express, Quick's
@@ -40,13 +41,9 @@ function loadQuickCities() {
   }
   return citiesCache;
 }
-export default function QuickDistrictSelect({
-  id = "city",
-  name = "city",
-  label = "City",
-  required,
-  disabled,
-}) {
+export default function QuickDistrictSelect({ id = "city", name = "city", label, required, disabled }) {
+  const { t } = useLocale();
+  const cityLabel = label ?? t("orderForm.city");
   const [cities, setCities] = useState([]); // [{ id, name }]
   const [loadState, setLoadState] = useState("loading"); // loading | ready | error
   const [query, setQuery] = useState("");
@@ -97,7 +94,7 @@ export default function QuickDistrictSelect({
   return (
     <div ref={containerRef} className="relative">
       <label htmlFor={id} className={LABEL}>
-        {label}
+        {cityLabel}
       </label>
 
       {/* The value Quick actually needs — the district's id, not its name. */}
@@ -131,7 +128,9 @@ export default function QuickDistrictSelect({
             }
           }}
           className={`${FIELD} pr-9`}
-          placeholder={loadState === "loading" ? "Loading cities…" : "Search city"}
+          placeholder={
+            loadState === "loading" ? t("orderForm.loadingCities") : t("orderForm.searchCity")
+          }
         />
         <svg
           aria-hidden="true"
@@ -146,9 +145,7 @@ export default function QuickDistrictSelect({
       </div>
 
       {loadState === "error" ? (
-        <p className="mt-1 text-xs text-red-600 dark:text-red-400">
-          Could not load the city list. Please try again.
-        </p>
+        <p className="mt-1 text-xs text-red-600 dark:text-red-400">{t("orderForm.couldNotLoadCities")}</p>
       ) : null}
 
       {open && filtered.length > 0 ? (

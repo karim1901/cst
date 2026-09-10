@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { FIELD, LABEL } from "@/app/_components/orders/shared";
+import { useLocale } from "@/app/_components/i18n/LocaleProvider";
 
 /**
  * Ozon-specific city combobox. Unlike the generic `CitySelect` (a plain
@@ -14,13 +15,9 @@ import { FIELD, LABEL } from "@/app/_components/orders/shared";
  * input, fetched live from our `/api/orders/ozon/cities` proxy (never Ozon
  * directly).
  */
-export default function OzonCitySelect({
-  id = "city",
-  name = "city",
-  label = "City",
-  required,
-  disabled,
-}) {
+export default function OzonCitySelect({ id = "city", name = "city", label, required, disabled }) {
+  const { t } = useLocale();
+  const cityLabel = label ?? t("orderForm.city");
   const [cities, setCities] = useState([]); // [{ id, name }]
   const [loadState, setLoadState] = useState("loading"); // loading | ready | error
   const [query, setQuery] = useState("");
@@ -71,7 +68,7 @@ export default function OzonCitySelect({
   return (
     <div ref={containerRef} className="relative">
       <label htmlFor={id} className={LABEL}>
-        {label}
+        {cityLabel}
       </label>
 
       {/* The value Ozon actually needs — the city's numeric id, not its name. */}
@@ -105,7 +102,9 @@ export default function OzonCitySelect({
             }
           }}
           className={`${FIELD} pr-9`}
-          placeholder={loadState === "loading" ? "Loading cities…" : "Search city"}
+          placeholder={
+            loadState === "loading" ? t("orderForm.loadingCities") : t("orderForm.searchCity")
+          }
         />
         <svg
           aria-hidden="true"
@@ -120,9 +119,7 @@ export default function OzonCitySelect({
       </div>
 
       {loadState === "error" ? (
-        <p className="mt-1 text-xs text-red-600 dark:text-red-400">
-          Could not load the city list. Please try again.
-        </p>
+        <p className="mt-1 text-xs text-red-600 dark:text-red-400">{t("orderForm.couldNotLoadCities")}</p>
       ) : null}
 
       {open && filtered.length > 0 ? (

@@ -2,27 +2,32 @@
 
 import { useState } from "react";
 
+import { useLocale } from "@/app/_components/i18n/LocaleProvider";
+
 const FIELD =
   "mt-1 block w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none transition focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 dark:focus:border-zinc-100 dark:focus:ring-zinc-100/10";
 
 const LABEL = "block text-sm font-medium text-zinc-700 dark:text-zinc-300";
 
+// Provider ids + labels are company names — shown verbatim, never
+// translated. `descKey` picks the translated one-line description.
 const PROVIDERS = [
   {
     id: "ozon_express",
     label: "Ozon Express",
-    description: "Requires an account ID and an API key.",
+    descKey: "shippingCompanies.requiresIdAndKey",
     hasOzonId: true,
   },
   {
     id: "quick_livraison",
     label: "Quick Livraison",
-    description: "Requires an API key.",
+    descKey: "shippingCompanies.requiresKey",
     hasOzonId: false,
   },
 ];
 
 export default function ShippingCompaniesManager({ initialCompanies }) {
+  const { t } = useLocale();
   const initialByProvider = Object.fromEntries(
     initialCompanies.map((company) => [company.provider, company])
   );
@@ -31,6 +36,15 @@ export default function ShippingCompaniesManager({ initialCompanies }) {
 
   return (
     <div className="space-y-4">
+      <header className="mb-6">
+        <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+          {t("shippingCompanies.title")}
+        </h1>
+        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+          {t("shippingCompanies.subtitle")}
+        </p>
+      </header>
+
       {PROVIDERS.map((provider) => (
         <ProviderCard
           key={provider.id}
@@ -51,6 +65,7 @@ export default function ShippingCompaniesManager({ initialCompanies }) {
 }
 
 function ProviderCard({ provider, summary, open, onToggle, onSaved }) {
+  const { t } = useLocale();
   const configured = Boolean(summary);
 
   return (
@@ -58,18 +73,20 @@ function ProviderCard({ provider, summary, open, onToggle, onSaved }) {
       <div className="flex flex-wrap items-center justify-between gap-3 p-5">
         <div>
           <div className="flex items-center gap-2">
+            {/* company name — verbatim */}
             <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
               {provider.label}
             </h2>
             <StatusBadge configured={configured} />
           </div>
-          <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
-            {provider.description}
-          </p>
+          <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">{t(provider.descKey)}</p>
           {configured ? (
             <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-              Current key: <span className="font-mono">{summary.apiKeyMasked ?? "••••••••"}</span>
-              {provider.hasOzonId && summary.ozonId ? ` · ID: ${summary.ozonId}` : ""}
+              {t("shippingCompanies.currentKey")}{" "}
+              <span className="font-mono">{summary.apiKeyMasked ?? "••••••••"}</span>
+              {provider.hasOzonId && summary.ozonId
+                ? ` · ${t("shippingCompanies.idInline")} ${summary.ozonId}`
+                : ""}
             </p>
           ) : null}
         </div>
@@ -78,7 +95,11 @@ function ProviderCard({ provider, summary, open, onToggle, onSaved }) {
           onClick={onToggle}
           className="shrink-0 rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
         >
-          {open ? "Cancel" : configured ? "Edit" : "Configure"}
+          {open
+            ? t("common.cancel")
+            : configured
+              ? t("common.edit")
+              : t("shippingCompanies.configure")}
         </button>
       </div>
 
@@ -92,6 +113,7 @@ function ProviderCard({ provider, summary, open, onToggle, onSaved }) {
 }
 
 function ProviderForm({ provider, summary, onSaved }) {
+  const { t } = useLocale();
   const [status, setStatus] = useState("idle"); // idle | loading | error | success
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState({});
@@ -122,7 +144,7 @@ function ProviderForm({ provider, summary, onSaved }) {
 
       if (!res.ok) {
         setStatus("error");
-        setError(data.error || "Unable to save this configuration. Please try again.");
+        setError(data.error || t("shippingCompanies.saveFailed"));
         setFieldErrors(data.fieldErrors || {});
         return;
       }
@@ -131,7 +153,7 @@ function ProviderForm({ provider, summary, onSaved }) {
       onSaved(data.shippingCompany);
     } catch {
       setStatus("error");
-      setError("Network error. Please check your connection and try again.");
+      setError(t("shippingCompanies.networkError"));
     }
   }
 
@@ -142,7 +164,7 @@ function ProviderForm({ provider, summary, onSaved }) {
       {provider.hasOzonId ? (
         <div>
           <label htmlFor={`${provider.id}-ozonId`} className={LABEL}>
-            ID
+            {t("shippingCompanies.idLabel")}
           </label>
           <input
             id={`${provider.id}-ozonId`}
@@ -152,7 +174,7 @@ function ProviderForm({ provider, summary, onSaved }) {
             defaultValue={summary?.ozonId ?? ""}
             disabled={loading}
             className={FIELD}
-            placeholder="Ozon Express account ID"
+            placeholder={t("shippingCompanies.ozonIdPlaceholder")}
           />
           <FieldError errors={fieldErrors.ozonId} />
         </div>
@@ -160,7 +182,7 @@ function ProviderForm({ provider, summary, onSaved }) {
 
       <div>
         <label htmlFor={`${provider.id}-apiKey`} className={LABEL}>
-          API Key
+          {t("shippingCompanies.apiKeyLabel")}
         </label>
         <input
           id={`${provider.id}-apiKey`}
@@ -170,7 +192,11 @@ function ProviderForm({ provider, summary, onSaved }) {
           required={!summary}
           disabled={loading}
           className={FIELD}
-          placeholder={summary ? "Leave blank to keep the current key" : "Enter API key"}
+          placeholder={
+            summary
+              ? t("shippingCompanies.keepKeyPlaceholder")
+              : t("shippingCompanies.enterKeyPlaceholder")
+          }
         />
         <FieldError errors={fieldErrors.apiKey} />
       </div>
@@ -189,7 +215,7 @@ function ProviderForm({ provider, summary, onSaved }) {
           role="status"
           className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-300"
         >
-          Configuration saved.
+          {t("shippingCompanies.configSaved")}
         </p>
       ) : null}
 
@@ -201,10 +227,10 @@ function ProviderForm({ provider, summary, onSaved }) {
         {loading ? (
           <>
             <Spinner />
-            Saving…
+            {t("common.saving")}
           </>
         ) : (
-          "Save Configuration"
+          t("shippingCompanies.saveConfig")
         )}
       </button>
     </form>
@@ -212,6 +238,7 @@ function ProviderForm({ provider, summary, onSaved }) {
 }
 
 function StatusBadge({ configured }) {
+  const { t } = useLocale();
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${
@@ -221,7 +248,7 @@ function StatusBadge({ configured }) {
       }`}
     >
       <span className={`h-1.5 w-1.5 rounded-full ${configured ? "bg-emerald-500" : "bg-zinc-400"}`} />
-      {configured ? "Configured" : "Not configured"}
+      {configured ? t("shippingCompanies.configured") : t("shippingCompanies.notConfigured")}
     </span>
   );
 }

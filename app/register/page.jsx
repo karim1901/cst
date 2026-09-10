@@ -4,8 +4,10 @@ import { redirect } from "next/navigation";
 import AuthShell from "@/app/_components/AuthShell";
 import RegisterForm from "@/app/_components/RegisterForm";
 import { getCurrentUser } from "@/lib/auth/current-user";
+import { localizedTitle } from "@/lib/i18n/metadata";
+import { getServerT } from "@/lib/i18n/server";
 
-export const metadata = { title: "Create a merchant account" };
+export const generateMetadata = localizedTitle("auth.signUpTitle");
 export const dynamic = "force-dynamic";
 
 export default async function RegisterPage() {
@@ -13,19 +15,21 @@ export default async function RegisterPage() {
     redirect("/dashboard");
   }
 
+  const t = await getServerT();
+
   return (
     <AuthShell
-      badge="Merchants only"
-      title="Create a merchant account"
-      subtitle="Registration is for business owners. Employees are added by their merchant; super admins are provisioned separately."
+      badge={t("auth.merchantsOnly")}
+      title={t("auth.signUpTitle")}
+      subtitle={t("auth.signUpSubtitle")}
       footer={
         <>
-          Already have an account?{" "}
+          {t("auth.haveAccount")}{" "}
           <Link
             href="/login"
             className="font-medium text-zinc-900 underline underline-offset-2 dark:text-zinc-100"
           >
-            Sign in
+            {t("auth.signIn")}
           </Link>
         </>
       }

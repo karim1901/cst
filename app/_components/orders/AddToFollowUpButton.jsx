@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import NoteModal from "@/app/_components/orders/NoteModal";
+import { useLocale } from "@/app/_components/i18n/LocaleProvider";
 
 /**
  * "Add to Follow-up" / "Added to Follow-up" — every order card's entry
@@ -19,12 +20,13 @@ import NoteModal from "@/app/_components/orders/NoteModal";
  * extra "is this followed up" request per card.
  */
 export default function AddToFollowUpButton({ provider, trackingNumber, isFollowedUp, onAdded }) {
+  const { t } = useLocale();
   const [open, setOpen] = useState(false);
 
   if (isFollowedUp) {
     return (
       <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
-        Added to Follow-up
+        {t("followUp.addedToFollowUp")}
       </span>
     );
   }
@@ -37,7 +39,7 @@ export default function AddToFollowUpButton({ provider, trackingNumber, isFollow
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      throw new Error(data?.error || "Could not add this order to follow-up.");
+      throw new Error(data?.error || t("followUp.couldNotAdd"));
     }
     setOpen(false);
     onAdded?.(trackingNumber, data.followUp);
@@ -50,13 +52,13 @@ export default function AddToFollowUpButton({ provider, trackingNumber, isFollow
         onClick={() => setOpen(true)}
         className="whitespace-nowrap rounded-full border border-zinc-300 px-2.5 py-1 text-xs font-medium text-zinc-700 transition hover:bg-zinc-100 active:bg-zinc-200 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
       >
-        Add to Follow-up
+        {t("followUp.addToFollowUp")}
       </button>
       {open ? (
         <NoteModal
-          title="Add to Follow-up"
+          title={t("followUp.addToFollowUp")}
           description={trackingNumber}
-          saveLabel="Save"
+          saveLabel={t("common.save")}
           onSave={handleSave}
           onClose={() => setOpen(false)}
         />

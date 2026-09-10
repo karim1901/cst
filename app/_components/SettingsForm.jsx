@@ -14,6 +14,7 @@ import {
   FieldError,
   Spinner,
 } from "@/app/_components/ui/form";
+import { useLocale } from "@/app/_components/i18n/LocaleProvider";
 import { roleLabel } from "@/lib/auth/roles";
 
 /**
@@ -22,10 +23,23 @@ import { roleLabel } from "@/lib/auth/roles";
  * the same optional-field pattern app/dashboard/page.jsx already uses for
  * its account rows. See app/api/settings/profile and .../password for the
  * server side.
+ *
+ * Renders its own heading (via t()) so the whole screen follows the active
+ * locale — the page shell is an async server component. The signed-in role
+ * name comes from roleLabel(); it is a fixed app term, shown as-is.
  */
 export default function SettingsForm({ user }) {
+  const { t } = useLocale();
+
   return (
     <div className="space-y-8">
+      <header className="mb-6 sm:mb-8">
+        <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+          {t("settings.title")}
+        </h1>
+        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">{t("settings.subtitle")}</p>
+      </header>
+
       <ProfileSection user={user} />
       <PasswordSection />
     </div>
@@ -34,6 +48,7 @@ export default function SettingsForm({ user }) {
 
 function ProfileSection({ user }) {
   const router = useRouter();
+  const { t } = useLocale();
   const isEmployee = user.username != null;
 
   const [status, setStatus] = useState("idle"); // idle | loading | success | error
@@ -67,7 +82,7 @@ function ProfileSection({ user }) {
 
       if (!res.ok) {
         setStatus("error");
-        setError(data.error || "Unable to save changes. Please try again.");
+        setError(data.error || t("settings.saveFailed"));
         setFieldErrors(data.fieldErrors || {});
         return;
       }
@@ -76,7 +91,7 @@ function ProfileSection({ user }) {
       router.refresh();
     } catch {
       setStatus("error");
-      setError("Network error. Please check your connection and try again.");
+      setError(t("settings.networkError"));
     }
   }
 
@@ -84,21 +99,34 @@ function ProfileSection({ user }) {
 
   return (
     <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm sm:p-8 dark:border-zinc-800 dark:bg-zinc-900">
-      <h2 className={SECTION_TITLE}>Profile</h2>
-      <p className={SECTION_HINT}>Signed in as {roleLabel(user.role)}.</p>
+      <h2 className={SECTION_TITLE}>{t("settings.profile")}</h2>
+      <p className={SECTION_HINT}>
+        {t("settings.signedInAs")} {roleLabel(user.role)}.
+      </p>
 
       <form onSubmit={handleSubmit} className="mt-5 space-y-4" noValidate>
         <fieldset disabled={loading} className="space-y-4">
           <div>
-            <label htmlFor="name" className={LABEL}>Name</label>
-            <input id="name" name="name" type="text" required defaultValue={user.name} className={FIELD} />
+            <label htmlFor="name" className={LABEL}>
+              {t("settings.name")}
+            </label>
+            <input
+              id="name"
+              name="name"
+              type="text"
+              required
+              defaultValue={user.name}
+              className={FIELD}
+            />
             <FieldError errors={fieldErrors.name} />
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {isEmployee ? (
               <div>
-                <label htmlFor="username" className={LABEL}>Username</label>
+                <label htmlFor="username" className={LABEL}>
+                  {t("settings.username")}
+                </label>
                 <input
                   id="username"
                   name="username"
@@ -112,7 +140,9 @@ function ProfileSection({ user }) {
               </div>
             ) : (
               <div>
-                <label htmlFor="email" className={LABEL}>Email</label>
+                <label htmlFor="email" className={LABEL}>
+                  {t("settings.email")}
+                </label>
                 <input
                   id="email"
                   name="email"
@@ -126,7 +156,9 @@ function ProfileSection({ user }) {
             )}
 
             <div>
-              <label htmlFor="phone" className={LABEL}>Phone number</label>
+              <label htmlFor="phone" className={LABEL}>
+                {t("settings.phone")}
+              </label>
               <input
                 id="phone"
                 name="phone"
@@ -139,19 +171,25 @@ function ProfileSection({ user }) {
           </div>
         </fieldset>
 
-        {status === "error" && error ? <p role="alert" className={ALERT_ERROR}>{error}</p> : null}
+        {status === "error" && error ? (
+          <p role="alert" className={ALERT_ERROR}>
+            {error}
+          </p>
+        ) : null}
         {status === "success" ? (
-          <p role="status" className={ALERT_SUCCESS}>Profile updated.</p>
+          <p role="status" className={ALERT_SUCCESS}>
+            {t("settings.profileUpdated")}
+          </p>
         ) : null}
 
         <button type="submit" disabled={loading} className={BUTTON_PRIMARY}>
           {loading ? (
             <>
               <Spinner />
-              Saving…
+              {t("common.saving")}
             </>
           ) : (
-            "Save profile"
+            t("settings.saveProfile")
           )}
         </button>
       </form>
@@ -160,6 +198,7 @@ function ProfileSection({ user }) {
 }
 
 function PasswordSection() {
+  const { t } = useLocale();
   const [status, setStatus] = useState("idle"); // idle | loading | success | error
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState({});
@@ -187,7 +226,7 @@ function PasswordSection() {
 
       if (!res.ok) {
         setStatus("error");
-        setError(data.error || "Unable to change your password. Please try again.");
+        setError(data.error || t("settings.passwordChangeFailed"));
         setFieldErrors(data.fieldErrors || {});
         return;
       }
@@ -196,7 +235,7 @@ function PasswordSection() {
       event.currentTarget.reset();
     } catch {
       setStatus("error");
-      setError("Network error. Please check your connection and try again.");
+      setError(t("settings.networkError"));
     }
   }
 
@@ -204,13 +243,15 @@ function PasswordSection() {
 
   return (
     <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm sm:p-8 dark:border-zinc-800 dark:bg-zinc-900">
-      <h2 className={SECTION_TITLE}>Security</h2>
-      <p className={SECTION_HINT}>Change your password.</p>
+      <h2 className={SECTION_TITLE}>{t("settings.security")}</h2>
+      <p className={SECTION_HINT}>{t("settings.changePasswordHint")}</p>
 
       <form onSubmit={handleSubmit} className="mt-5 space-y-4" noValidate>
         <fieldset disabled={loading} className="space-y-4">
           <div>
-            <label htmlFor="currentPassword" className={LABEL}>Current password</label>
+            <label htmlFor="currentPassword" className={LABEL}>
+              {t("settings.currentPassword")}
+            </label>
             <input
               id="currentPassword"
               name="currentPassword"
@@ -224,7 +265,9 @@ function PasswordSection() {
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label htmlFor="newPassword" className={LABEL}>New password</label>
+              <label htmlFor="newPassword" className={LABEL}>
+                {t("settings.newPassword")}
+              </label>
               <input
                 id="newPassword"
                 name="newPassword"
@@ -237,7 +280,9 @@ function PasswordSection() {
               <FieldError errors={fieldErrors.newPassword} />
             </div>
             <div>
-              <label htmlFor="confirmNewPassword" className={LABEL}>Confirm new password</label>
+              <label htmlFor="confirmNewPassword" className={LABEL}>
+                {t("settings.confirmNewPassword")}
+              </label>
               <input
                 id="confirmNewPassword"
                 name="confirmNewPassword"
@@ -251,19 +296,25 @@ function PasswordSection() {
           </div>
         </fieldset>
 
-        {status === "error" && error ? <p role="alert" className={ALERT_ERROR}>{error}</p> : null}
+        {status === "error" && error ? (
+          <p role="alert" className={ALERT_ERROR}>
+            {error}
+          </p>
+        ) : null}
         {status === "success" ? (
-          <p role="status" className={ALERT_SUCCESS}>Password changed.</p>
+          <p role="status" className={ALERT_SUCCESS}>
+            {t("settings.passwordChanged")}
+          </p>
         ) : null}
 
         <button type="submit" disabled={loading} className={BUTTON_PRIMARY}>
           {loading ? (
             <>
               <Spinner />
-              Changing…
+              {t("settings.changingPassword")}
             </>
           ) : (
-            "Change password"
+            t("settings.changePassword")
           )}
         </button>
       </form>
