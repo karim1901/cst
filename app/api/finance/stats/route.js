@@ -23,6 +23,7 @@ const MONEY_KEYS = [
   "otherExpenseCents",
   "totalCostCents",
   "profitCents",
+  "returnValueCents",
 ];
 const RATIO_MONEY_KEYS = [
   "adCostPerOrderCents",
