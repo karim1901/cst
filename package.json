@@ -7,7 +7,7 @@
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
-    "test": "node scripts/verify-commission-units.mjs && node scripts/verify-quick-parcel-classification.mjs && node scripts/verify-finance-business-date.mjs && node scripts/verify-finance-return-value.mjs",
+    "test": "node scripts/verify-commission-units.mjs && node scripts/verify-quick-parcel-classification.mjs && node scripts/verify-finance-business-date.mjs && node scripts/verify-finance-return-value.mjs && node scripts/verify-returns-validation-filter.mjs",
     "seed:super-admin": "node --env-file=.env.local scripts/seed-super-admin.mjs"
   },
   "dependencies": {
