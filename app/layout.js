@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import "./globals.css";
 import { ThemeProvider } from "@/app/_components/theme/ThemeProvider";
 import { LocaleProvider } from "@/app/_components/i18n/LocaleProvider";
+import ServiceWorkerUpdateReload from "@/app/_components/pwa/ServiceWorkerUpdateReload";
 import {
   LOCALE_COOKIE,
   THEME_COOKIE,
@@ -81,6 +82,7 @@ export default async function RootLayout({ children }) {
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased ${theme === "dark" ? "dark" : ""}`}
     >
       <body className="min-h-full flex flex-col">
+        <ServiceWorkerUpdateReload />
         <ThemeProvider initialTheme={theme ?? "light"}>
           <LocaleProvider initialLocale={locale}>{children}</LocaleProvider>
         </ThemeProvider>
