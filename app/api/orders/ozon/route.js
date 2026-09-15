@@ -9,7 +9,7 @@ import Order from "@/models/Order";
 import { decryptSecret } from "@/lib/crypto/secret-box";
 import { ozonOrderCreateSchema } from "@/lib/validation/orders";
 import { fieldErrorsOf } from "@/lib/validation/auth";
-import { addParcel } from "@/lib/ozon/client";
+import { addParcel, fetchCities } from "@/lib/ozon/client";
 import { fetchOzonOrdersForMonth } from "@/lib/ozon/fetch-orders";
 import {
   reserveNextOzonTrackingNumber,
@@ -78,6 +78,38 @@ async function resolveListingActor(currentUser, requestedEmployeeId) {
     actor: { id: String(employee._id), username: employee.username, email: employee.email },
     error: null,
   };
+}
+
+/**
+ * Resolve a submitted Ozon city ID (what `OzonCitySelect.jsx` actually
+ * sends — Ozon's `add-parcel` needs the ID, never a name, see that
+ * component's own comment) to its real, authoritative name from Ozon's own
+ * public `/cities` list — the SAME source the picker itself used to show
+ * names in the first place, re-resolved here server-side rather than
+ * trusting client-submitted display text. Root cause this fixes: the old
+ * code stored this raw ID directly into `Order.city`, the field every other
+ * part of the app treats as the human-readable name — see this route's own
+ * comment on the `Order.create` call below. A resolution failure (Ozon
+ * temporarily unreachable, or a genuinely unknown id) returns `null` —
+ * NEVER guessed/fabricated — and must not block order creation, since by
+ * the time this runs Ozon has already confirmed the parcel itself exists.
+ */
+async function resolveOzonCityName(cityId, signal) {
+  try {
+    const data = await fetchCities(signal);
+    const raw = data?.CITIES ?? {};
+    for (const key of Object.keys(raw)) {
+      if (String(raw[key]?.ID ?? "") === String(cityId)) {
+        const name = String(raw[key]?.NAME ?? "").trim();
+        return name || null;
+      }
+    }
+    return null;
+  } catch (error) {
+    if (error?.name === "AbortError") throw error;
+    console.error("[POST /api/orders/ozon] city name resolution failed:", error?.message);
+    return null;
+  }
 }
 
 async function loadOzonCredentials(merchantId) {
@@ -333,6 +365,22 @@ export async function POST(request) {
 
   // Ozon confirmed creation — mirror it locally. A failure here must not be
   // reported as an order failure: the parcel already exists at Ozon.
+  //
+  // `city` here (and above, sent as `parcel-city`) is the numeric Ozon city
+  // ID — correct for the Ozon API call, but NOT what `Order.city` is meant
+  // to hold (every other part of the app — Orders/Returns display, Finance
+  // city-name matching — treats it as the human-readable name). Store the
+  // real ID separately in `providerLocationId` (the same field
+  // lib/finance/calculate.js's shipping-price lookup already prefers), and
+  // resolve the authoritative NAME from Ozon's own city list for `city`
+  // itself — never the raw id. A resolution failure (rare — Ozon
+  // temporarily unreachable) falls back to the id rather than blocking
+  // order creation (the parcel already exists at Ozon by this point); see
+  // lib/orders/city-display-name.js for how a row in that fallback state
+  // still resolves correctly everywhere it's displayed once the merchant's
+  // city dataset is synchronized.
+  const resolvedCityName = await resolveOzonCityName(city, request.signal);
+
   let orderDoc = null;
   try {
     orderDoc = await Order.create({
@@ -344,7 +392,8 @@ export async function POST(request) {
       numericTrackingNumber,
       receiverName: receiver,
       phone,
-      city,
+      city: resolvedCityName ?? city,
+      providerLocationId: city,
       address,
       productNature,
       price,

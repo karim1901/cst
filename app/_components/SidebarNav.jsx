@@ -181,20 +181,42 @@ export default function SidebarNav({ user, children }) {
 
   return (
     <div className="min-h-dvh bg-zinc-50 dark:bg-black md:flex">
-      {/* Desktop sidebar — normal document flow, part of the md:flex row.
-          Entirely separate markup from the mobile drawer below, not just a
-          responsive variant of it, so mobile-only behavior (overlay,
-          backdrop, transform) can never leak into the desktop layout. */}
-      <aside className="hidden shrink-0 border-r border-zinc-200 md:flex md:w-64 md:flex-col dark:border-zinc-800">
-        <div className="px-5 py-5">
+      {/* Desktop sidebar — STILL part of the normal md:flex row (so `main`
+          below it naturally reserves exactly its width via `flex-1`/
+          `shrink-0`, and DOM order + the browser's own direction-aware
+          flexbox row axis — driven by `document.documentElement.dir`, see
+          LocaleProvider — keeps it on the correct RTL/LTR "start" side with
+          zero hardcoded left/right), but now `md:sticky md:top-0` pins its
+          box to the viewport instead of letting it scroll away with the
+          page: the ROOT div below has no `overflow` of its own, so the
+          window/document IS the scrolling context, and a sticky element
+          within it stays visually fixed at `top: 0` for as long as its
+          container (this whole flex row, exactly as tall as `main`'s
+          content) keeps scrolling past it — the same visual result as
+          `position: fixed`, without `fixed`'s usual RTL/width-reservation
+          bookkeeping (a `fixed` sidebar leaves the flow entirely, so `main`
+          would need an explicit `md:ms-64` to avoid content sliding
+          underneath it, and the offset side would need to flip manually
+          for RTL — sticky needs neither). `md:h-dvh` caps its own box at
+          exactly one viewport tall so it never stretches to `main`'s full
+          (page-length) height; the nav list below gets its OWN
+          `overflow-y-auto` region so a navigation list taller than the
+          remaining space (header + footer) scrolls internally, never the
+          whole sidebar box itself. Entirely separate markup from the mobile
+          drawer below, not just a responsive variant of it, so mobile-only
+          behavior (overlay, backdrop, transform) can never leak into the
+          desktop layout, and this sticky behavior is `md:`-only so it can
+          never turn the mobile drawer into a permanently visible panel. */}
+      <aside className="hidden shrink-0 border-e border-zinc-200 md:sticky md:top-0 md:flex md:h-dvh md:w-64 md:flex-col dark:border-zinc-800">
+        <div className="shrink-0 px-5 py-5">
           <span className="text-sm font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
             CST
           </span>
         </div>
-        <div className="flex-1 px-3">
+        <div className="min-h-0 flex-1 overflow-y-auto px-3">
           <NavLinks items={items} pathname={pathname} />
         </div>
-        <div className="border-t border-zinc-200 p-4 dark:border-zinc-800">
+        <div className="shrink-0 border-t border-zinc-200 p-4 dark:border-zinc-800">
           <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">
             {user.name}
           </p>

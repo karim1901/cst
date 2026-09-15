@@ -25,6 +25,7 @@ import {
 } from "@/lib/quick/tracking-number";
 import { periodFor, isValidPeriod } from "@/lib/tracking/counter";
 import { matchesStatusFilter, ORDER_STATUS_FILTER_VALUES } from "@/lib/orders/status-groups";
+import { ACTIVE_PROVIDER_ORDER_FILTER } from "@/lib/orders/provider-record-status";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -255,6 +256,11 @@ export async function GET(request) {
             ...ownerFilter,
             provider: SHIPPING_PROVIDERS.QUICK_LIVRAISON,
             numericTrackingNumber: { $regex: `^${period}` },
+            // Never seed the page with an already-confirmed provider-deleted
+            // order (lib/orders/provider-record-status.js) — the live
+            // reconciliation below would remove it anyway, this just avoids
+            // the flash.
+            providerRecordStatus: ACTIVE_PROVIDER_ORDER_FILTER,
           })
             .sort({ numericTrackingNumber: -1 })
             .lean();

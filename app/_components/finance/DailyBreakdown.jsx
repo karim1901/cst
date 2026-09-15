@@ -75,10 +75,12 @@ export default function DailyBreakdown({ stats }) {
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 sm:grid-cols-3">
                   <Row label={t("finance.revenue")} value={money(day.revenue)} />
                   <Row label={t("finance.returnValue")} value={money(day.returnValue)} />
+                  <Row label={t("finance.validatedReturnValue")} value={money(day.validatedReturnValue)} />
                   <Row label={t("finance.adSpend")} value={money(day.adSpend)} />
                   <Row label={t("finance.productCosts")} value={money(day.productCost)} />
                   <Row label={t("finance.shippingCosts")} value={money(day.shippingCost)} />
                   <Row label={t("finance.totalCosts")} value={money(day.totalCost)} />
+                  <Row label={t("finance.netProfitDeliveredOnly")} value={money(day.deliveredOnlyProfit)} />
                 </div>
                 {!day.profitComplete ? (
                   <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
@@ -93,6 +95,11 @@ export default function DailyBreakdown({ stats }) {
                 {day.returnValueUnknownPriceOrders > 0 ? (
                   <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
                     {day.returnValueUnknownPriceOrders} {t("finance.returnValueUnknownNote")}
+                  </p>
+                ) : null}
+                {day.validatedReturnValueUnknownPriceOrders > 0 ? (
+                  <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
+                    {day.validatedReturnValueUnknownPriceOrders} {t("finance.validatedReturnValueUnknownNote")}
                   </p>
                 ) : null}
 

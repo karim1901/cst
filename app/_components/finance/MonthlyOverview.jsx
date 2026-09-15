@@ -67,6 +67,12 @@ export default function MonthlyOverview({ stats }) {
         </div>
       ) : null}
 
+      {totals.validatedReturnValueUnknownPriceOrders > 0 ? (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300">
+          {totals.validatedReturnValueUnknownPriceOrders} {t("finance.validatedReturnValueUnknownNote")}
+        </div>
+      ) : null}
+
       <section className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatCard label={t("common.orders")} value={totals.orders} />
         {/* "Livré"/"Retour"/"Progress" — this app's own established status
@@ -79,9 +85,12 @@ export default function MonthlyOverview({ stats }) {
 
       <section className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard label={t("finance.revenue")} value={money(totals.revenue)} tone="emerald" />
-        {/* Return Value — monetary value of return-category orders. An
-            additive reporting metric; NOT part of the cost/profit math. */}
+        {/* Return Value / Validated Return Value — the two halves of
+            return-category orders' monetary value, split by the merchant's
+            own physical-validation state. Both additive reporting metrics;
+            NEITHER is part of the cost/profit math. */}
         <StatCard label={t("finance.returnValue")} value={money(totals.returnValue)} tone="red" />
+        <StatCard label={t("finance.validatedReturnValue")} value={money(totals.validatedReturnValue)} tone="amber" />
         <StatCard label={t("finance.adSpend")} value={money(totals.adSpend)} />
         <StatCard label={t("finance.productCosts")} value={money(totals.productCost)} />
         <StatCard label={t("finance.shippingCosts")} value={money(totals.shippingCost)} />
@@ -89,21 +98,44 @@ export default function MonthlyOverview({ stats }) {
         <StatCard label={t("finance.totalCosts")} value={money(totals.totalCost)} tone="red" />
       </section>
 
-      <section className={`${CARD} mb-6`}>
-        <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400">{t("finance.netProfit")}</p>
-        <p
-          className={`mt-1 text-3xl font-bold tracking-tight ${
-            totals.profit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
-          }`}
-        >
-          {money(totals.profit)}
-        </p>
+      {/* Two INDEPENDENT profit cards, side by side — the existing,
+          unchanged Net Profit (charges product/shipping cost across every
+          order this month, delivered or not) and the new Delivered-Only
+          Net Profit (same revenue, same ad-spend/other-expense allocation,
+          but product/shipping cost restricted to Delivered orders only —
+          see lib/finance/calculate.js's module comment). Neither replaces
+          the other; they may legitimately disagree. */}
+      <section className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className={CARD}>
+          <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400">{t("finance.netProfit")}</p>
+          <p
+            className={`mt-1 text-3xl font-bold tracking-tight ${
+              totals.profit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
+            }`}
+          >
+            {money(totals.profit)}
+          </p>
+        </div>
+        <div className={CARD}>
+          <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400">{t("finance.netProfitDeliveredOnly")}</p>
+          <p
+            className={`mt-1 text-3xl font-bold tracking-tight ${
+              totals.deliveredOnlyProfit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
+            }`}
+          >
+            {money(totals.deliveredOnlyProfit)}
+          </p>
+          {!totals.deliveredOnlyProfitComplete ? (
+            <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">{t("finance.costNotConfigured")}</p>
+          ) : null}
+        </div>
       </section>
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard label={t("finance.adCostPerOrder")} value={money(ratios.adCostPerOrder)} />
         <StatCard label={t("finance.adCostPerDelivered")} value={money(ratios.adCostPerDelivered)} />
         <StatCard label={t("finance.profitPerDelivered")} value={money(ratios.profitPerDelivered)} />
+        <StatCard label={t("finance.deliveredOnlyProfitPerDelivered")} value={money(ratios.deliveredOnlyProfitPerDelivered)} />
         <StatCard label={t("finance.averageOrderValue")} value={money(ratios.averageOrderValue)} />
         <StatCard label={t("finance.deliveryRate")} value={percent(ratios.deliveryRate)} tone="emerald" />
         <StatCard label={t("finance.returnRate")} value={percent(ratios.returnRate)} tone="red" />

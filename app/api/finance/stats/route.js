@@ -24,11 +24,20 @@ const MONEY_KEYS = [
   "totalCostCents",
   "profitCents",
   "returnValueCents",
+  // Validated Return Value — the mirror of returnValueCents (item 3).
+  "validatedReturnValueCents",
+  // Net Profit — Delivered Only (item 6/19) — a SECOND, additional profit
+  // figure; profitCents above is untouched.
+  "deliveredOnlyProductCostCents",
+  "deliveredOnlyShippingCostCents",
+  "deliveredOnlyTotalCostCents",
+  "deliveredOnlyProfitCents",
 ];
 const RATIO_MONEY_KEYS = [
   "adCostPerOrderCents",
   "adCostPerDeliveredCents",
   "profitPerDeliveredCents",
+  "deliveredOnlyProfitPerDeliveredCents",
   "averageOrderValueCents",
 ];
 

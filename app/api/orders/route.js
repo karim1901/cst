@@ -12,6 +12,8 @@ import {
   ORDER_STATUS_FILTER_VALUES,
   RETURN_STATUS_RAW_TOKENS,
 } from "@/lib/orders/status-groups";
+import { ACTIVE_PROVIDER_ORDER_FILTER } from "@/lib/orders/provider-record-status";
+import { buildCityNameIndex, resolveOrderCityDisplayName } from "@/lib/orders/city-name-index";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -76,7 +78,10 @@ export async function GET(request) {
 
   await connectToDatabase();
 
-  const filter = { merchantId: currentUser.id, provider };
+  // A confirmed provider-deleted order (lib/orders/provider-record-status.js)
+  // must not appear in this local-DB browse either — same active/existing
+  // scope rule as Finance/Returns/Dashboard/Commission.
+  const filter = { merchantId: currentUser.id, provider, providerRecordStatus: ACTIVE_PROVIDER_ORDER_FILTER };
   if (employeeId) filter.employeeId = employeeId;
   // Same anchored-prefix convention as lib/commission/report.js — an
   // order's tracking number, not createdAt, decides which month it's in.
@@ -107,11 +112,11 @@ export async function GET(request) {
   const withCollation = (query) =>
     useCollation ? query.collation({ locale: "en", strength: 1 }) : query;
 
-  const [orders, total] = await Promise.all([
+  const [orders, total, cityNameById] = await Promise.all([
     withCollation(
       Order.find(filter)
         .select(
-          "employeeId provider trackingNumber receiverName phone city address productNature price lastKnownStatus deliveredAt createdAt"
+          "employeeId provider trackingNumber receiverName phone city providerLocationId address productNature price lastKnownStatus deliveredAt createdAt"
         )
         .sort({ createdAt: -1 })
         .skip((page - 1) * pageSize)
@@ -119,6 +124,7 @@ export async function GET(request) {
         .populate({ path: "employeeId", select: "name username" })
     ).lean(),
     withCollation(Order.countDocuments(filter)),
+    buildCityNameIndex(currentUser.id, provider),
   ]);
 
   return NextResponse.json({
@@ -130,7 +136,10 @@ export async function GET(request) {
         : null,
       receiver: order.receiverName,
       phone: order.phone,
-      city: order.city,
+      // Historical orders whose `city` field was mistakenly stored as the
+      // raw Ozon city id still resolve correctly here — see
+      // lib/orders/city-display-name.js's own comment.
+      city: resolveOrderCityDisplayName(order, cityNameById),
       address: order.address,
       product: order.productNature,
       price: order.price,

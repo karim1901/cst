@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import { SHIPPING_PROVIDER_VALUES } from "./ShippingCompany.js";
 import { USER_ROLE_VALUES, USER_ROLES } from "./User.js";
 import { RETURN_VALIDATION_STATUS_VALUES } from "../lib/returns/constants.js";
+import { PROVIDER_RECORD_STATUS_VALUES } from "../lib/orders/provider-record-status.js";
 
 const { Schema } = mongoose;
 
@@ -170,6 +171,35 @@ const orderSchema = new Schema(
     // `numericTrackingNumber`'s leading "YYYYMM"
     // (lib/commission/resolve-commission-period.js), unchanged.
     orderDate: { type: Date, default: null },
+
+    // ---- Provider existence (soft-delete / audit trail) ----------------
+    // Does the shipping PROVIDER still know about this tracking number at
+    // all? Completely independent from `lastKnownStatus` (a shipping/
+    // delivery status) and from `returnValidationStatus` above (the
+    // merchant's own physical-return confirmation) — see
+    // lib/orders/provider-record-status.js for the full rationale. Every
+    // order — new or pre-existing — defaults to "active"; nothing ever
+    // sets "deleted" except confirmed provider reconciliation
+    // (lib/orders/reconcile-stale-orders.js, the ONE writer, triggered from
+    // the existing Ozon/Quick historical-sync jobs). This document is NEVER
+    // physically deleted when a provider deletion is detected — that would
+    // erase real historical financial data; "deleted" is a marker,
+    // preserved for audit, and current operational/financial queries
+    // (Finance, Returns, Dashboard, Commission, the "all employees" Orders
+    // browser) exclude it via ACTIVE_PROVIDER_ORDER_FILTER.
+    providerRecordStatus: {
+      type: String,
+      enum: {
+        values: [...PROVIDER_RECORD_STATUS_VALUES],
+        message: "`{VALUE}` is not a valid provider record status.",
+      },
+      default: "active",
+    },
+    // When reconciliation confirmed the provider no longer has this order
+    // (null while active, or after it is rediscovered at the provider and
+    // automatically revived — see lib/commission/sync-historical-orders.js
+    // / lib/quick/sync-order.js's "existing" branches).
+    providerDeletedAt: { type: Date, default: null },
 
     // ---- Returns management (app/dashboard/returns) -------------------
     // The MERCHANT's own internal "did I physically get this package back?"

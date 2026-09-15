@@ -13,6 +13,8 @@ import {
   RETURN_STATUS_RAW_TOKENS,
 } from "@/lib/orders/status-groups";
 import { ORDER_SEARCH_MODES, buildOrderSearchFilter } from "@/lib/orders/search";
+import { ACTIVE_PROVIDER_ORDER_FILTER } from "@/lib/orders/provider-record-status";
+import { buildCityNameIndex, resolveOrderCityDisplayName } from "@/lib/orders/city-name-index";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -86,7 +88,10 @@ export async function GET(request) {
   const isEmployee = currentUser.role === USER_ROLES.EMPLOYEE;
   const merchantId = isEmployee ? currentUser.merchantId : currentUser.id;
 
-  const filter = { merchantId, provider, ...searchFragment };
+  // A confirmed provider-deleted order (lib/orders/provider-record-status.js)
+  // stays in Mongo for audit but must not appear in search results either —
+  // same active/existing scope rule as every other local-DB order surface.
+  const filter = { merchantId, provider, providerRecordStatus: ACTIVE_PROVIDER_ORDER_FILTER, ...searchFragment };
 
   if (isEmployee) {
     // An employee only ever searches their OWN orders — a client-supplied
@@ -136,11 +141,11 @@ export async function GET(request) {
 
   await connectToDatabase();
 
-  const [orders, total] = await Promise.all([
+  const [orders, total, cityNameById] = await Promise.all([
     withCollation(
       Order.find(filter)
         .select(
-          "employeeId provider trackingNumber receiverName phone city address productNature price quantity note lastKnownStatus deliveredAt createdAt updatedAt"
+          "employeeId provider trackingNumber receiverName phone city providerLocationId address productNature price quantity note lastKnownStatus deliveredAt createdAt updatedAt"
         )
         .sort({ createdAt: -1 })
         .skip((page - 1) * pageSize)
@@ -148,6 +153,7 @@ export async function GET(request) {
         .populate({ path: "employeeId", select: "name username" })
     ).lean(),
     withCollation(Order.countDocuments(filter)),
+    buildCityNameIndex(merchantId, provider),
   ]);
 
   return NextResponse.json({
@@ -165,7 +171,7 @@ export async function GET(request) {
         : null,
       receiver: order.receiverName,
       phone: order.phone,
-      city: order.city,
+      city: resolveOrderCityDisplayName(order, cityNameById),
       address: order.address,
       product: order.productNature,
       quantity: order.quantity ?? null,
