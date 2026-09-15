@@ -6,9 +6,13 @@ import { useEffect } from "react";
  * ONE shared trigger for the automatic, light, current-month-only provider
  * sync (`POST /api/returns/sync {full:false}` -> lib/returns/sync.js#
  * syncReturnsForMerchant -> lib/commission/sync-historical-orders.js, the
- * SAME engine the scheduled cron (app/api/cron/reconcile-ozon) and the
- * Returns page's own background sync already use — item 5's "one
- * authoritative mechanism", never a second/incompatible sync path).
+ * SAME engine the once-daily scheduled cron (app/api/cron/daily-reconcile,
+ * `full: true` there instead — see that route's own comment for why the two
+ * scopes exist) and the Returns page's own background sync already use —
+ * one authoritative mechanism, never a second/incompatible sync path. This
+ * is also THE reason a Vercel Hobby plan's once-per-day cron limit is not a
+ * data-freshness problem for day-to-day use: this trigger fires on every
+ * ordinary page view, independent of cron frequency or plan tier.
  *
  * ROOT CAUSE this hook fixes (the "Delivered took too long to show up"
  * complaint): Dashboard, Commission and Finance all read the LOCAL `Order`
