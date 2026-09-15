@@ -34,6 +34,21 @@ export const maxDuration = 300;
  * Ozon credentials are decrypted per-merchant, server-side only, inside
  * lib/commission/sync-historical-orders.js — never returned in this
  * response, never logged.
+ *
+ * DEPLOYMENT NOTE (item 8/9 — "use a REASONABLE, deployment-compatible
+ * frequency"): vercel.json currently schedules this every 30 minutes. On a
+ * Vercel Hobby plan, cron jobs are capped to once per day regardless of what
+ * vercel.json requests — this endpoint itself has no way to detect or
+ * change that (Vercel enforces it at the platform level, before this code
+ * ever runs). If the project is deployed on Hobby, this cron alone is NOT a
+ * bounded-latency guarantee. This is why status/deletion freshness for
+ * Dashboard/Commission/Finance no longer depends on cron frequency alone —
+ * see app/_components/shared/useBackgroundProviderSync.js, wired into every
+ * page that reads the local order mirror, so the SAME light sync also fires
+ * on ordinary merchant page views regardless of plan/cron tier. Confirm the
+ * actual deployment's plan and adjust this schedule (Pro+: any interval,
+ * including every few minutes) if bounded near-real-time cron freshness is
+ * required independent of page visits.
  */
 export async function GET(request) {
   const secret = process.env.CRON_SECRET;

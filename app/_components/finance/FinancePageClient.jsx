@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import ProviderTabs from "@/app/_components/orders/ProviderTabs";
 import MonthSelect from "@/app/_components/orders/MonthSelect";
 import { Spinner, ErrorBanner } from "@/app/_components/orders/shared";
+import { useBackgroundProviderSync } from "@/app/_components/shared/useBackgroundProviderSync";
 import { useLocale } from "@/app/_components/i18n/LocaleProvider";
 import { SHIPPING_PROVIDERS } from "@/lib/shipping/providers";
 import { periodFor } from "@/lib/tracking/counter";
@@ -38,6 +39,12 @@ const TAB_LABEL_KEY = {
  */
 export default function FinancePageClient() {
   const { t } = useLocale();
+  // Same root-cause fix as Dashboard/Commission — Finance is computed
+  // entirely from the local order mirror (lib/finance/calculate.js). This
+  // page is already merchant-only (enforced server-side in
+  // app/dashboard/finance/page.jsx), so the trigger always fires here — see
+  // app/_components/shared/useBackgroundProviderSync.js's own comment.
+  useBackgroundProviderSync(true);
   const [provider, setProvider] = useState(SHIPPING_PROVIDERS.OZON_EXPRESS);
   const [period, setPeriod] = useState(() => periodFor());
   const [tab, setTab] = useState("overview");

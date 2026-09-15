@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import MonthSelect from "@/app/_components/orders/MonthSelect";
 import ProviderTabs from "@/app/_components/orders/ProviderTabs";
 import { Spinner, ErrorBanner } from "@/app/_components/orders/shared";
+import { useBackgroundProviderSync } from "@/app/_components/shared/useBackgroundProviderSync";
 import { useLocale } from "@/app/_components/i18n/LocaleProvider";
 import { periodFor } from "@/lib/tracking/counter";
 import { SHIPPING_PROVIDERS } from "@/lib/shipping/providers";
@@ -56,6 +57,10 @@ function periodLabel(period, locale) {
 
 export default function CommissionTable({ isEmployee = false }) {
   const { t } = useLocale();
+  // Same root-cause fix as Dashboard — Commission is computed entirely from
+  // the local order mirror (lib/commission/report.js) — see
+  // app/_components/shared/useBackgroundProviderSync.js's own comment.
+  useBackgroundProviderSync(!isEmployee);
   const emptyStateMessage = isEmployee ? t("commission.noDataThisMonth") : t("commission.noEmployees");
   const [provider, setProvider] = useState(SHIPPING_PROVIDERS.OZON_EXPRESS);
   const [period, setPeriod] = useState(() => periodFor());

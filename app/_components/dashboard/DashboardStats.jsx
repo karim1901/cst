@@ -7,6 +7,7 @@ import MonthSelect from "@/app/_components/orders/MonthSelect";
 import StatsCards from "@/app/_components/dashboard/StatsCards";
 import CommissionCards from "@/app/_components/dashboard/CommissionCards";
 import { Spinner, ErrorBanner } from "@/app/_components/orders/shared";
+import { useBackgroundProviderSync } from "@/app/_components/shared/useBackgroundProviderSync";
 import { useLocale } from "@/app/_components/i18n/LocaleProvider";
 import { SHIPPING_PROVIDERS } from "@/lib/shipping/providers";
 
@@ -29,6 +30,13 @@ import { SHIPPING_PROVIDERS } from "@/lib/shipping/providers";
  */
 export default function DashboardStats({ isEmployee = false }) {
   const { t } = useLocale();
+  // Root-cause fix for "Delivered took too long to show up" on Dashboard
+  // (item 6-10 of the full reconciliation task): Dashboard reads the LOCAL
+  // order mirror only (lib/orders/dashboard-stats.js), never Ozon/Quick
+  // live — see app/_components/shared/useBackgroundProviderSync.js's own
+  // comment for why this page previously depended entirely on the merchant
+  // having visited Orders/Returns first, or on the cron.
+  useBackgroundProviderSync(!isEmployee);
   const [provider, setProvider] = useState(SHIPPING_PROVIDERS.OZON_EXPRESS);
   const [period, setPeriod] = useState(""); // "" = all time
   const [state, setState] = useState("loading"); // loading | ready | error

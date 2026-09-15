@@ -13,6 +13,7 @@ import OrdersSearchResults from "@/app/_components/orders/OrdersSearchResults";
 import OrdersBrowser from "@/app/_components/orders/OrdersBrowser";
 import OzonOrdersList from "@/app/_components/orders/OzonOrdersList";
 import QuickOrdersList from "@/app/_components/orders/QuickOrdersList";
+import { useBackgroundProviderSync } from "@/app/_components/shared/useBackgroundProviderSync";
 import { useLocale } from "@/app/_components/i18n/LocaleProvider";
 import { SHIPPING_PROVIDERS, SHIPPING_PROVIDER_VALUES } from "@/lib/shipping/providers";
 import { periodFor } from "@/lib/tracking/counter";
@@ -150,31 +151,10 @@ export default function OrdersPageClient({ isMerchant, employees }) {
   // Automatic background reconciliation (item 2/27) — fires ONCE, silently,
   // right after the Orders page loads, so a provider-deleted order is
   // detected without the merchant ever visiting Returns or clicking a
-  // "Sync" button. Reuses the SAME endpoint/mechanism the Returns page's
-  // own background sync already calls (lib/returns/sync.js#
-  // syncReturnsForMerchant, `full: false` — current month, both providers)
-  // rather than a second, disconnected sync path. Merchant-only, matching
-  // that endpoint's own existing authorization boundary — an employee
-  // session simply skips this call (their merchant's own visit to any page
-  // that triggers it keeps everyone's data fresh; the scheduled cron job,
-  // app/api/cron/reconcile-ozon, is the reliable backstop either way, not
-  // dependent on any page ever being opened). Fire-and-forget: never blocks
-  // rendering, never shown to the user, a failure here is silently ignored
-  // (the already-loaded live/local data is still shown normally).
-  useEffect(() => {
-    if (!isMerchant) return;
-    const controller = new AbortController();
-    fetch("/api/returns/sync", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ full: false }),
-      signal: controller.signal,
-    }).catch(() => {});
-    return () => controller.abort();
-    // Intentionally once-only (mount) — never re-triggered by a filter/tab
-    // change, same rule as the Returns page's own identical effect.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // "Sync" button. Same shared trigger Dashboard/Commission/Finance now also
+  // use (app/_components/shared/useBackgroundProviderSync.js) — one
+  // implementation, not a duplicated effect per page (item 5).
+  useBackgroundProviderSync(isMerchant);
 
   function handleFollowUpAdded(trackingNumber) {
     setFollowUpKeys((current) => {
