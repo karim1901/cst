@@ -97,10 +97,14 @@ export async function GET(request) {
       revenue: centsToDh(o.revenueCents),
       productCost: o.productCostCents != null ? centsToDh(o.productCostCents) : null,
       shippingCost: o.shippingCostCents != null ? centsToDh(o.shippingCostCents) : null,
+      returnValue: centsToDh(o.returnValueContribution ?? 0),
+      validatedReturnValue: centsToDh(o.validatedReturnValueContribution ?? 0),
       priceCents: undefined,
       revenueCents: undefined,
       productCostCents: undefined,
       shippingCostCents: undefined,
+      returnValueContribution: undefined,
+      validatedReturnValueContribution: undefined,
     })),
   }));
 

@@ -27,15 +27,20 @@ const MAX_PAGE_SIZE = 50;
  * this request; see app/api/returns/sync/route.js for that, a separate,
  * explicitly-triggered job):
  *
- *  - "all" (default)  — every order, any status.
+ *  - "all" (default)  — every order in the selected month (or every order,
+ *    unscoped, if "All Months" is explicitly chosen), any status.
  *  - "delivered"       — orders whose `deliveredAt` is set, optionally
  *    narrowed by `employeeId` (ownership-validated below — never trusted
  *    from the client) and/or a delivery-date range (see
  *    lib/returns/delivery-date.js; always against `deliveredAt`, never
- *    `createdAt`).
- *  - "returns"          — the ORIGINAL Returns feature, unchanged: cancelled/
- *    refused/returned orders, filterable by shipping-status reason and by
- *    the merchant's own internal validation state.
+ *    `createdAt`) — AND the selected month (both apply together).
+ *  - "returns"          — the ORIGINAL Returns feature: cancelled/refused/
+ *    returned orders, filterable by shipping-status reason and by the
+ *    merchant's own internal validation state — AND the selected month.
+ *
+ * Month (`period`) is a GLOBAL filter across all 3 sections, including the
+ * 3 tab badge counts (see `getSectionCounts` — lib/returns/list.js's own
+ * comment has the full root-cause story of why this matters).
  *
  * Merchant-only, same rule as Follow-up (app/api/order-followups) and the
  * "all employees" order browser this mirrors the shape of
@@ -106,14 +111,13 @@ export async function GET(request) {
     });
   }
 
-  // Month filter — All section only ("All Months" = no `period` param at
-  // all). Same "YYYYMM" tracking-number-derived month convention as
-  // app/api/orders/route.js — see lib/returns/list.js's own comment.
-  let period = null;
-  if (section === ORDER_LIFECYCLE_SECTIONS.ALL) {
-    const requestedPeriod = searchParams.get("period");
-    period = isValidPeriod(requestedPeriod) ? requestedPeriod : null;
-  }
+  // Month filter — GLOBAL, applies to EVERY section including "delivered"
+  // now (month-filter fix — see lib/returns/list.js's own comment for the
+  // full root-cause story, including why the 3 tab badge counts needed the
+  // exact same fix). "All Months" = no `period` param at all. Same "YYYYMM"
+  // tracking-number-derived month convention as app/api/orders/route.js.
+  const requestedPeriod = searchParams.get("period");
+  const period = isValidPeriod(requestedPeriod) ? requestedPeriod : null;
 
   const page = Math.max(1, Number.parseInt(searchParams.get("page"), 10) || 1);
   const pageSize = Math.min(
@@ -133,7 +137,7 @@ export async function GET(request) {
       page,
       pageSize,
     }),
-    getSectionCounts(currentUser.id, requestedProvider),
+    getSectionCounts(currentUser.id, requestedProvider, period),
   ]);
 
   return NextResponse.json({

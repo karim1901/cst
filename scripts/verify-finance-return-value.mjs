@@ -1,17 +1,20 @@
 /**
- * Regression tests for the Finance "Return Value" card — the total
- * monetary VALUE (order price) of return-category orders (Returned /
- * Refused / Cancelled) that are NOT yet physically validated. A reporting
- * metric that never touches profit/cost.
+ * Regression tests for the Finance "Return Value" / "Validated Return
+ * Value" cards — ROOT-CAUSE FIX: these used to sum `order.price` (the
+ * customer's full SELLING price). They now sum the PRODUCT COST value
+ * (`ProductCost.costPerUnitCents × order.quantity` — the exact same
+ * resolution lib/finance/calculate.js already uses for its regular
+ * `productCostCents` total) of return-category orders (Returned / Refused /
+ * Cancelled), split by `returnValidationStatus`. See
+ * lib/finance/return-value.js's own comment for the full rationale.
  *
- * Pure logic: `lib/finance/return-value.js`, `isUsableCommissionPrice` and
- * `lib/returns/constants.js` have zero `@/` imports.
+ * Pure logic: `lib/finance/return-value.js` and `lib/returns/constants.js`
+ * have zero `@/` imports.
  *
  * Run with:  node scripts/verify-finance-return-value.mjs
  */
 
 import { returnValueContribution, validatedReturnValueContribution } from "../lib/finance/return-value.js";
-import { isUsableCommissionPrice } from "../lib/commission/calculate.js";
 import { dhToCents, sumCents } from "../lib/finance/money.js";
 import { RETURN_VALIDATION_STATUSES } from "../lib/returns/constants.js";
 
@@ -22,187 +25,149 @@ function eq(label, actual, expected) {
   console.log(`${ok ? "PASS" : "FAIL"} - ${label}${ok ? "" : ` - got ${JSON.stringify(actual)}, expected ${JSON.stringify(expected)}`}`);
 }
 
-// Helper mirroring exactly what lib/finance/calculate.js feeds the function:
-//   isReturn    = (bucket === RETURN)
-//   isValidated = order.returnValidationStatus === "validated"
-//   priceUsable = isUsableCommissionPrice(price)
-//   priceCents  = dhToCents(price) ?? 0
-// `validation` defaults to "pending" (also the schema default, and the
-// safe treatment of a legacy row with no value).
-function contribFor({ isReturn, price, validation = RETURN_VALIDATION_STATUSES.PENDING }) {
+// Mirrors EXACTLY what lib/finance/calculate.js does, in order:
+//   unitCostCents   = ProductCost lookup by normalized productNature
+//   quantity        = order.quantity ?? 1                    (unchanged default)
+//   productCostCents = unitCostCents != null ? unitCostCents * quantity : null
+//   costUsable      = productCostCents != null
+// `costPerUnitDh: null` simulates "no matching ProductCost document" — the
+// unresolved case (item 11), never falling back to `price`.
+function productCostCentsFor({ costPerUnitDh, quantity = 1 }) {
+  if (costPerUnitDh == null) return null;
+  return dhToCents(costPerUnitDh) * quantity;
+}
+
+// `price` is accepted by both helpers below but deliberately NEVER read —
+// see the "selling price is ignored" tests, which pass a `price` far from
+// the expected result to prove it plays no role in either calculation.
+function contribFor({ isReturn, price: _price, costPerUnitDh, quantity = 1, validation = RETURN_VALIDATION_STATUSES.PENDING }) {
+  const productCostCents = productCostCentsFor({ costPerUnitDh, quantity });
   return returnValueContribution({
     isReturn,
     isValidated: validation === RETURN_VALIDATION_STATUSES.VALIDATED,
-    priceUsable: isUsableCommissionPrice(price),
-    priceCents: dhToCents(price) ?? 0,
+    costUsable: productCostCents != null,
+    costCents: productCostCents ?? 0,
   });
 }
 
-// Same shape, for the Validated Return Value card's helper.
-function validatedContribFor({ isReturn, price, validation = RETURN_VALIDATION_STATUSES.PENDING }) {
+function validatedContribFor({ isReturn, price: _price, costPerUnitDh, quantity = 1, validation = RETURN_VALIDATION_STATUSES.PENDING }) {
+  const productCostCents = productCostCentsFor({ costPerUnitDh, quantity });
   return validatedReturnValueContribution({
     isReturn,
     isValidated: validation === RETURN_VALIDATION_STATUSES.VALIDATED,
-    priceUsable: isUsableCommissionPrice(price),
-    priceCents: dhToCents(price) ?? 0,
+    costUsable: productCostCents != null,
+    costCents: productCostCents ?? 0,
   });
 }
 
-console.log("== a PENDING return-category order contributes its real price ==");
-eq("Returned 220 (pending) -> +22000c", contribFor({ isReturn: true, price: 220 }), { valueCents: 22000, unknownPriceOrders: 0 });
-eq("Refused 180 (pending) -> +18000c", contribFor({ isReturn: true, price: 180 }), { valueCents: 18000, unknownPriceOrders: 0 });
-eq("Cancelled 150 (pending) -> +15000c", contribFor({ isReturn: true, price: 150 }), { valueCents: 15000, unknownPriceOrders: 0 });
-eq("Returned decimal 12.50 -> +1250c (cents, no float error)", contribFor({ isReturn: true, price: 12.5 }), { valueCents: 1250, unknownPriceOrders: 0 });
-eq('Returned numeric string "300" -> +30000c', contribFor({ isReturn: true, price: "300" }), { valueCents: 30000, unknownPriceOrders: 0 });
-// legacy row with no returnValidationStatus is treated as pending -> included
-eq("Returned 220, validation missing -> treated as pending -> +22000c",
-  returnValueContribution({ isReturn: true, isValidated: false, priceUsable: true, priceCents: 22000 }),
-  { valueCents: 22000, unknownPriceOrders: 0 });
+console.log("== THE core fix: Return Value uses PRODUCT COST × QUANTITY, never order.price ==");
+// Task's own example: selling price 220, product RL costs 70, qty 1 -> 70, NOT 220.
+eq(
+  "selling price 220, cost 70, qty 1, pending -> 7000c (70.00 DH), NOT 22000c",
+  contribFor({ isReturn: true, price: 220, costPerUnitDh: 70, quantity: 1 }),
+  { valueCents: 7000, unknownCostOrders: 0 }
+);
+// qty 2 -> 140.
+eq(
+  "selling price 220, cost 70, qty 2, pending -> 14000c (140.00 DH)",
+  contribFor({ isReturn: true, price: 220, costPerUnitDh: 70, quantity: 2 }),
+  { valueCents: 14000, unknownCostOrders: 0 }
+);
+// Selling-price-difference proof (task item 19): price 500 changes nothing.
+eq(
+  "selling price 500 (far from 70) -> STILL 7000c, proving price is ignored",
+  contribFor({ isReturn: true, price: 500, costPerUnitDh: 70, quantity: 1 }),
+  { valueCents: 7000, unknownCostOrders: 0 }
+);
+// qty 3 -> 210.
+eq(
+  "cost 70, qty 3 -> 21000c (210.00 DH)",
+  contribFor({ isReturn: true, price: 999, costPerUnitDh: 70, quantity: 3 }),
+  { valueCents: 21000, unknownCostOrders: 0 }
+);
 
-console.log("\n== a VALIDATED return contributes NOTHING (value AND unknown flag) ==");
-eq("Returned 220, VALIDATED -> 0", contribFor({ isReturn: true, price: 220, validation: RETURN_VALIDATION_STATUSES.VALIDATED }), { valueCents: 0, unknownPriceOrders: 0 });
-eq("Refused 180, VALIDATED -> 0", contribFor({ isReturn: true, price: 180, validation: RETURN_VALIDATION_STATUSES.VALIDATED }), { valueCents: 0, unknownPriceOrders: 0 });
-eq("Cancelled 150, VALIDATED -> 0", contribFor({ isReturn: true, price: 150, validation: RETURN_VALIDATION_STATUSES.VALIDATED }), { valueCents: 0, unknownPriceOrders: 0 });
-eq("Returned unknown price, VALIDATED -> 0 and NOT flagged unknown",
-  contribFor({ isReturn: true, price: 0, validation: RETURN_VALIDATION_STATUSES.VALIDATED }), { valueCents: 0, unknownPriceOrders: 0 });
-
-console.log("\n== NON-return orders never contribute (excluded) ==");
-eq("Delivered 220 -> nothing", contribFor({ isReturn: false, price: 220 }), { valueCents: 0, unknownPriceOrders: 0 });
-eq("Progress 220 -> nothing", contribFor({ isReturn: false, price: 220 }), { valueCents: 0, unknownPriceOrders: 0 });
-eq("Delivered with unknown price -> nothing (not counted, not flagged here)", contribFor({ isReturn: false, price: 0 }), { valueCents: 0, unknownPriceOrders: 0 });
-
-console.log("\n== unknown / missing / real-zero return price is NEVER fabricated ==");
-eq("Return price 0 (Quick 'unknown') -> value 0, flagged unknown", contribFor({ isReturn: true, price: 0 }), { valueCents: 0, unknownPriceOrders: 1 });
-eq("Return price null -> value 0, flagged unknown", contribFor({ isReturn: true, price: null }), { valueCents: 0, unknownPriceOrders: 1 });
-eq("Return price undefined -> value 0, flagged unknown", contribFor({ isReturn: true, price: undefined }), { valueCents: 0, unknownPriceOrders: 1 });
-eq("Return price NaN -> value 0, flagged unknown", contribFor({ isReturn: true, price: NaN }), { valueCents: 0, unknownPriceOrders: 1 });
-eq("Return price negative -> value 0, flagged unknown", contribFor({ isReturn: true, price: -50 }), { valueCents: 0, unknownPriceOrders: 1 });
-
-console.log("\n== spec example (13): 220 + 300 + 180 refused, 250 progress excluded -> 700 DH ==");
+console.log("\n== PENDING vs VALIDATED: toggling validation moves the order between the two cards, unchanged provider status ==");
 {
-  const rows = [
-    contribFor({ isReturn: true, price: 220 }),
-    contribFor({ isReturn: true, price: 300 }),
-    contribFor({ isReturn: true, price: 180 }),
-    contribFor({ isReturn: false, price: 250 }), // progress
+  // Order A: cost 70, qty 1, pending -> Return Value = 70, Validated = 0.
+  const aPending = contribFor({ isReturn: true, price: 220, costPerUnitDh: 70, quantity: 1 });
+  const aPendingValidated = validatedContribFor({ isReturn: true, price: 220, costPerUnitDh: 70, quantity: 1 });
+  eq("A pending -> Return Value 7000c", aPending, { valueCents: 7000, unknownCostOrders: 0 });
+  eq("A pending -> Validated Return Value 0", aPendingValidated, { valueCents: 0, unknownCostOrders: 0 });
+
+  // Now validate A: Return Value -> 0, Validated Return Value -> 70. The
+  // order's own `status` (RETURNED/REFUSED/CANCELLED) is a separate,
+  // untouched field — only returnValidationStatus changed (item 8/18).
+  const aValidated = contribFor({ isReturn: true, price: 220, costPerUnitDh: 70, quantity: 1, validation: RETURN_VALIDATION_STATUSES.VALIDATED });
+  const aValidatedValidated = validatedContribFor({ isReturn: true, price: 220, costPerUnitDh: 70, quantity: 1, validation: RETURN_VALIDATION_STATUSES.VALIDATED });
+  eq("A validated -> Return Value 0", aValidated, { valueCents: 0, unknownCostOrders: 0 });
+  eq("A validated -> Validated Return Value 7000c", aValidatedValidated, { valueCents: 7000, unknownCostOrders: 0 });
+}
+
+console.log("\n== missing ProductCost -> unresolved, NEVER falls back to order.price ==");
+eq(
+  "selling price 220, no ProductCost match, pending -> 0, flagged unknown (NOT 22000c)",
+  contribFor({ isReturn: true, price: 220, costPerUnitDh: null }),
+  { valueCents: 0, unknownCostOrders: 1 }
+);
+eq(
+  "selling price 220, no ProductCost match, validated -> 0, flagged unknown (Validated card)",
+  validatedContribFor({ isReturn: true, price: 220, costPerUnitDh: null, validation: RETURN_VALIDATION_STATUSES.VALIDATED }),
+  { valueCents: 0, unknownCostOrders: 1 }
+);
+// A genuinely CONFIGURED 0 DH cost is a real zero, not "missing" — never conflated.
+eq(
+  "ProductCost configured at 0 DH -> a REAL 0, not flagged unknown",
+  contribFor({ isReturn: true, price: 220, costPerUnitDh: 0, quantity: 1 }),
+  { valueCents: 0, unknownCostOrders: 0 }
+);
+
+console.log("\n== Delivered / Progress orders excluded from BOTH cards regardless of cost ==");
+eq("Delivered, cost 70 -> 0 (Return Value)", contribFor({ isReturn: false, price: 220, costPerUnitDh: 70 }), { valueCents: 0, unknownCostOrders: 0 });
+eq("Progress, cost 70 -> 0 (Return Value)", contribFor({ isReturn: false, price: 220, costPerUnitDh: 70 }), { valueCents: 0, unknownCostOrders: 0 });
+eq("Delivered, validated flag irrelevant -> 0 (Validated Return Value)", validatedContribFor({ isReturn: false, price: 220, costPerUnitDh: 70, validation: RETURN_VALIDATION_STATUSES.VALIDATED }), { valueCents: 0, unknownCostOrders: 0 });
+
+console.log("\n== spec example: A pending(cost70,qty1) + B validated(cost40,qty2) + C pending(cost0,qty1, missing) ==");
+{
+  const A = contribFor({ isReturn: true, price: 220, costPerUnitDh: 70, quantity: 1 }); // -> 70
+  const Av = validatedContribFor({ isReturn: true, price: 220, costPerUnitDh: 70, quantity: 1 });
+  const B = contribFor({ isReturn: true, price: 300, costPerUnitDh: 40, quantity: 2, validation: RETURN_VALIDATION_STATUSES.VALIDATED }); // excluded from pending
+  const Bv = validatedContribFor({ isReturn: true, price: 300, costPerUnitDh: 40, quantity: 2, validation: RETURN_VALIDATION_STATUSES.VALIDATED }); // -> 80
+  const C = contribFor({ isReturn: true, price: 180, costPerUnitDh: null, quantity: 1 }); // unresolved -> 0, flagged
+
+  const returnValue = sumCents([A, B, C].map((r) => r.valueCents));
+  const validatedReturnValue = sumCents([Av, Bv].map((r) => r.valueCents));
+  eq("Return Value = 7000c (70.00 DH: only A resolves; C is unresolved, not fabricated)", returnValue, 7000);
+  eq("Validated Return Value = 8000c (80.00 DH: B 40x2)", validatedReturnValue, 8000);
+  eq("unresolved (unknown cost) count in Return Value = 1 (order C)", sumCents([A, B, C].map((r) => r.unknownCostOrders)), 1);
+}
+
+console.log("\n== Return Value + Validated Return Value partition the known-cost Return bucket exactly ==");
+{
+  const orders = [
+    { price: 220, costPerUnitDh: 70, quantity: 1, validation: "pending" },
+    { price: 300, costPerUnitDh: 40, quantity: 2, validation: "validated" },
+    { price: 180, costPerUnitDh: 20, quantity: 3, validation: "pending" },
+    { price: 150, costPerUnitDh: 15, quantity: 1, validation: "validated" },
   ];
-  eq("Return Value = 70000c (700.00 DH)", sumCents(rows.map((r) => r.valueCents)), 70000);
-  eq("unknown-price returns = 0", sumCents(rows.map((r) => r.unknownPriceOrders)), 0);
+  const pending = sumCents(orders.map((o) => contribFor({ isReturn: true, ...o }).valueCents));
+  const validated = sumCents(orders.map((o) => validatedContribFor({ isReturn: true, ...o }).valueCents));
+  const knownCostTotal = sumCents(orders.map((o) => productCostCentsFor(o) ?? 0));
+  eq("pending + validated === SUM(productCost x quantity) over every known-cost return order", pending + validated, knownCostTotal);
+  eq("knownCostTotal = 70x1 + 40x2 + 20x3 + 15x1 = 70+80+60+15 = 225 DH", knownCostTotal, 22500);
 }
 
-console.log("\n== updated spec example (3): B (300) is VALIDATED -> excluded -> 400 DH ==");
+console.log("\n== daily <-> monthly reconciliation (product-cost basis, not price) ==");
 {
-  const A = contribFor({ isReturn: true, price: 220 }); // RETURNED + pending
-  const B = contribFor({ isReturn: true, price: 300, validation: RETURN_VALIDATION_STATUSES.VALIDATED }); // RETURNED + validated
-  const C = contribFor({ isReturn: true, price: 180 }); // REFUSED + pending
-  const D = contribFor({ isReturn: false, price: 250 }); // DELIVERED
-  eq("Return Value = 40000c (400.00 DH: 220 + 180)", sumCents([A, B, C, D].map((r) => r.valueCents)), 40000);
-}
-
-console.log("\n== validate / revert transitions move the total by exactly that order's price ==");
-{
-  // start: 3 pending returns -> 1000 DH
-  const priced = [400, 300, 300];
-  const allPending = priced.map((p) => contribFor({ isReturn: true, price: p }));
-  const startTotal = sumCents(allPending.map((r) => r.valueCents));
-  eq("start: all pending -> 100000c (1,000.00 DH)", startTotal, 100000);
-
-  // validate the 300 DH one
-  const afterValidate = [
-    contribFor({ isReturn: true, price: 400 }),
-    contribFor({ isReturn: true, price: 300, validation: RETURN_VALIDATION_STATUSES.VALIDATED }),
-    contribFor({ isReturn: true, price: 300 }),
+  const day1 = [
+    contribFor({ isReturn: true, price: 220, costPerUnitDh: 70, quantity: 1 }),
+    contribFor({ isReturn: true, price: 180, costPerUnitDh: 20, quantity: 2 }),
   ];
-  const validatedTotal = sumCents(afterValidate.map((r) => r.valueCents));
-  eq("after validate 300 -> 70000c (700.00 DH), i.e. down by exactly 300", validatedTotal, 70000);
-  eq("delta on validate == -30000c", validatedTotal - startTotal, -30000);
-
-  // revert it back to pending
-  const afterRevert = priced.map((p) => contribFor({ isReturn: true, price: p }));
-  const revertedTotal = sumCents(afterRevert.map((r) => r.valueCents));
-  eq("after revert -> back to 100000c (1,000.00 DH)", revertedTotal, 100000);
-  eq("delta on revert == +30000c", revertedTotal - validatedTotal, 30000);
-}
-
-console.log("\n== spec example (14): 220 + unknown + 300 -> known 520 DH, 1 unknown ==");
-{
-  const rows = [
-    contribFor({ isReturn: true, price: 220 }),
-    contribFor({ isReturn: true, price: 0 }), // Quick historical, priceSource "unknown"
-    contribFor({ isReturn: true, price: 300 }),
-  ];
-  eq("known Return Value = 52000c (520.00 DH)", sumCents(rows.map((r) => r.valueCents)), 52000);
-  eq("unknown-price returns = 1", sumCents(rows.map((r) => r.unknownPriceOrders)), 1);
-}
-
-console.log("\n== no returned orders -> Return Value = 0 ==");
-eq("empty -> 0", sumCents([].map((r) => r.valueCents)), 0);
-
-console.log("\n== daily <-> monthly reconciliation (known prices) ==");
-{
-  // three "days", each a small set of return orders
-  const day1 = [contribFor({ isReturn: true, price: 220 }), contribFor({ isReturn: true, price: 180 })];
-  const day2 = [contribFor({ isReturn: true, price: 300 })];
-  const day3 = [contribFor({ isReturn: false, price: 999 })]; // not a return
+  const day2 = [contribFor({ isReturn: true, price: 300, costPerUnitDh: 40, quantity: 1 })];
+  const day3 = [contribFor({ isReturn: false, price: 999, costPerUnitDh: 999 })]; // not a return
   const dailyTotals = [day1, day2, day3].map((d) => sumCents(d.map((r) => r.valueCents)));
   const monthly = sumCents([...day1, ...day2, ...day3].map((r) => r.valueCents));
   eq("SUM(daily return values) === monthly return value", sumCents(dailyTotals), monthly);
-  eq("monthly = 70000c (700.00 DH: 220 + 180 + 300)", monthly, 70000);
-}
-
-console.log("\n== VALIDATED RETURN VALUE: a VALIDATED return-category order contributes its real price ==");
-eq("Returned 220 (validated) -> +22000c", validatedContribFor({ isReturn: true, price: 220, validation: RETURN_VALIDATION_STATUSES.VALIDATED }), { valueCents: 22000, unknownPriceOrders: 0 });
-eq("Refused 180 (validated) -> +18000c", validatedContribFor({ isReturn: true, price: 180, validation: RETURN_VALIDATION_STATUSES.VALIDATED }), { valueCents: 18000, unknownPriceOrders: 0 });
-eq("Cancelled 150 (validated) -> +15000c", validatedContribFor({ isReturn: true, price: 150, validation: RETURN_VALIDATION_STATUSES.VALIDATED }), { valueCents: 15000, unknownPriceOrders: 0 });
-
-console.log("\n== VALIDATED RETURN VALUE: a PENDING return contributes NOTHING ==");
-eq("Returned 220, pending -> 0 (excluded from Validated Return Value)", validatedContribFor({ isReturn: true, price: 220 }), { valueCents: 0, unknownPriceOrders: 0 });
-eq("Refused 180, pending -> 0", validatedContribFor({ isReturn: true, price: 180 }), { valueCents: 0, unknownPriceOrders: 0 });
-eq("legacy row (validation missing -> treated as pending) -> 0",
-  validatedReturnValueContribution({ isReturn: true, isValidated: false, priceUsable: true, priceCents: 22000 }),
-  { valueCents: 0, unknownPriceOrders: 0 });
-
-console.log("\n== VALIDATED RETURN VALUE: Delivered / Progress orders never contribute ==");
-eq("Delivered 220, validated flag irrelevant -> 0", validatedContribFor({ isReturn: false, price: 220, validation: RETURN_VALIDATION_STATUSES.VALIDATED }), { valueCents: 0, unknownPriceOrders: 0 });
-eq("Progress 220 -> 0", validatedContribFor({ isReturn: false, price: 220 }), { valueCents: 0, unknownPriceOrders: 0 });
-
-console.log("\n== VALIDATED RETURN VALUE: unknown price on a VALIDATED return is not fabricated ==");
-eq("Return price 0 (Quick 'unknown'), validated -> 0, flagged unknown",
-  validatedContribFor({ isReturn: true, price: 0, validation: RETURN_VALIDATION_STATUSES.VALIDATED }),
-  { valueCents: 0, unknownPriceOrders: 1 });
-eq("Return price null, validated -> 0, flagged unknown",
-  validatedContribFor({ isReturn: true, price: null, validation: RETURN_VALIDATION_STATUSES.VALIDATED }),
-  { valueCents: 0, unknownPriceOrders: 1 });
-
-console.log("\n== spec example (task 10, §3): A pending 220, B validated 300, C pending 180, D validated 150 ==");
-{
-  const A = { isReturn: true, price: 220, validation: RETURN_VALIDATION_STATUSES.PENDING }; // RETURNED, pending
-  const B = { isReturn: true, price: 300, validation: RETURN_VALIDATION_STATUSES.VALIDATED }; // RETURNED, validated
-  const C = { isReturn: true, price: 180, validation: RETURN_VALIDATION_STATUSES.PENDING }; // REFUSED, pending
-  const D = { isReturn: true, price: 150, validation: RETURN_VALIDATION_STATUSES.VALIDATED }; // CANCELLED, validated
-
-  const returnValue = sumCents([A, B, C, D].map((o) => contribFor(o).valueCents));
-  const validatedReturnValue = sumCents([A, B, C, D].map((o) => validatedContribFor(o).valueCents));
-
-  eq("Return Value = 40000c (400.00 DH: A 220 + C 180)", returnValue, 40000);
-  eq("Validated Return Value = 45000c (450.00 DH: B 300 + D 150)", validatedReturnValue, 45000);
-}
-
-console.log("\n== Return Value + Validated Return Value partition the known-price Return bucket exactly ==");
-{
-  const orders = [
-    { isReturn: true, price: 220, validation: "pending" },
-    { isReturn: true, price: 300, validation: "validated" },
-    { isReturn: true, price: 180, validation: "pending" },
-    { isReturn: true, price: 150, validation: "validated" },
-    { isReturn: false, price: 999, validation: "pending" }, // delivered/progress, irrelevant
-  ];
-  const pending = sumCents(orders.map((o) => contribFor(o).valueCents));
-  const validated = sumCents(orders.map((o) => validatedContribFor(o).valueCents));
-  const knownReturnTotal = sumCents(
-    orders.filter((o) => o.isReturn).map((o) => dhToCents(o.price) ?? 0)
-  );
-  eq("pending + validated === SUM(price) over every known-price return order", pending + validated, knownReturnTotal);
+  eq("monthly = 70 + 40 + 40 = 150 DH (day1: 70x1 + 20x2=40 -> 110; day2: 40)", monthly, 15000);
 }
 
 console.log(`\n${failures === 0 ? "ALL CHECKS PASSED" : failures + " CHECK(S) FAILED"}`);

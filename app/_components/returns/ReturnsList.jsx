@@ -12,6 +12,7 @@ import { Spinner, ErrorBanner } from "@/app/_components/orders/shared";
 import { useLocale } from "@/app/_components/i18n/LocaleProvider";
 import { SHIPPING_PROVIDERS } from "@/lib/shipping/providers";
 import { STATUS_FILTER_LABELS } from "@/lib/orders/status-groups";
+import { periodFor } from "@/lib/tracking/counter";
 import {
   ORDER_LIFECYCLE_SECTIONS,
   ORDER_LIFECYCLE_SECTION_VALUES,
@@ -82,13 +83,23 @@ export default function ReturnsList({ employees }) {
   const [provider, setProvider] = useState(SHIPPING_PROVIDERS.OZON_EXPRESS);
   const [section, setSection] = useState(ORDER_LIFECYCLE_SECTIONS.ALL);
 
-  // All-section-only filter: which month, by the SAME tracking-number-
-  // derived "YYYYMM" convention the Orders page's own MonthSelect already
-  // uses (see lib/returns/list.js's own comment) — "" means "All Months".
-  const [period, setPeriod] = useState("");
+  // MONTH FILTER — GLOBAL across ALL 3 sections (All/Delivered/Returns),
+  // including the tab badge counts (see lib/returns/list.js's own comment
+  // for the full root-cause story: this used to be wired as an "All
+  // section only" filter, so switching to the Returns section's own Return
+  // Status pills — or to Delivered — silently showed every month, while
+  // the 3 badge numbers above were NEVER scoped by month at all, even on
+  // "all"). Defaults to the CURRENT month (the same `periodFor()` every
+  // other month-scoped page in this app defaults to — Finance,
+  // Commission — never "All Months" silently) so the page opens already
+  // showing one real, bounded month instead of a merchant-wide grand
+  // total; "All Months" (`""`) remains one explicit choice away via
+  // MonthSelect's `allowAll`. Same tracking-number-derived "YYYYMM"
+  // convention as the Orders page's own MonthSelect throughout.
+  const [period, setPeriod] = useState(() => periodFor());
 
   // Returns-section-only filters (unchanged from before this page grew the
-  // other 2 sections).
+  // other 2 sections) — combine with `period` above, not instead of it.
   const [shippingStatus, setShippingStatus] = useState("all");
   const [validation, setValidation] = useState("all");
 
@@ -144,9 +155,14 @@ export default function ReturnsList({ employees }) {
         page: String(page),
         pageSize: String(PAGE_SIZE),
       });
-      if (section === ORDER_LIFECYCLE_SECTIONS.ALL) {
-        if (period) params.set("period", period);
-      } else if (section === ORDER_LIFECYCLE_SECTIONS.RETURNS) {
+      // MONTH FILTER: sent whenever a month is selected, for EVERY section
+      // — no longer gated by section at all (see the `period` state's own
+      // comment). Cumulative with, never a replacement for, each section's
+      // own sub-filters below (Delivered's own deliveryDate range included).
+      if (period) {
+        params.set("period", period);
+      }
+      if (section === ORDER_LIFECYCLE_SECTIONS.RETURNS) {
         if (shippingStatus !== "all") params.set("shippingStatus", shippingStatus);
         if (validation !== "all") params.set("validation", validation);
       } else if (section === ORDER_LIFECYCLE_SECTIONS.DELIVERED) {
@@ -329,33 +345,39 @@ export default function ReturnsList({ employees }) {
       </div>
 
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-        {section === ORDER_LIFECYCLE_SECTIONS.ALL ? (
+        <div className="flex flex-wrap items-end gap-4">
+          {/* MONTH FILTER: a GLOBAL filter shown for every section — it
+              sits ALONGSIDE each section's own sub-filters (Return Status
+              pills, or Delivered's Employee/Delivery-Date filters) rather
+              than being replaced by them, so it stays active no matter
+              which tab or Return Status is picked. */}
           <div className="flex flex-col gap-1">
             <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">{t("common.month")}</span>
             <MonthSelect value={period} onChange={setPeriod} allowAll />
           </div>
-        ) : section === ORDER_LIFECYCLE_SECTIONS.RETURNS ? (
-          <ReturnsFilters
-            shippingStatus={shippingStatus}
-            onShippingStatusChange={setShippingStatus}
-            validation={validation}
-            onValidationChange={setValidation}
-          />
-        ) : (
-          <DeliveredFilters
-            employees={employees}
-            employeeId={employeeId}
-            onEmployeeChange={setEmployeeId}
-            deliveryDate={deliveryDate}
-            onDeliveryDateChange={setDeliveryDate}
-            customDate={customDate}
-            onCustomDateChange={setCustomDate}
-            customStart={customStart}
-            onCustomStartChange={setCustomStart}
-            customEnd={customEnd}
-            onCustomEndChange={setCustomEnd}
-          />
-        )}
+          {section === ORDER_LIFECYCLE_SECTIONS.RETURNS ? (
+            <ReturnsFilters
+              shippingStatus={shippingStatus}
+              onShippingStatusChange={setShippingStatus}
+              validation={validation}
+              onValidationChange={setValidation}
+            />
+          ) : section === ORDER_LIFECYCLE_SECTIONS.DELIVERED ? (
+            <DeliveredFilters
+              employees={employees}
+              employeeId={employeeId}
+              onEmployeeChange={setEmployeeId}
+              deliveryDate={deliveryDate}
+              onDeliveryDateChange={setDeliveryDate}
+              customDate={customDate}
+              onCustomDateChange={setCustomDate}
+              customStart={customStart}
+              onCustomStartChange={setCustomStart}
+              customEnd={customEnd}
+              onCustomEndChange={setCustomEnd}
+            />
+          ) : null}
+        </div>
         <button
           type="button"
           onClick={handleSyncNow}
