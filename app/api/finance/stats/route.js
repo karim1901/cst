@@ -21,6 +21,11 @@ const MONEY_KEYS = [
   "productCostCents",
   "shippingCostCents",
   "otherExpenseCents",
+  // Employee Commission (item 1) — sourced from the SAME authoritative
+  // Commission-page service (lib/commission/report.js), never a second
+  // calculation — see lib/finance/calculate.js's own comment. Month-level
+  // only, same as otherExpenseCents (stays 0 on every individual day row).
+  "employeeCommissionCents",
   "totalCostCents",
   "profitCents",
   "returnValueCents",

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { useLocale } from "@/app/_components/i18n/LocaleProvider";
+import { useNavigationProgress } from "@/app/_components/navigation/NavigationProgressProvider";
 
 const FIELD =
   "mt-1 block w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none transition focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 dark:focus:border-zinc-100 dark:focus:ring-zinc-100/10";
@@ -22,6 +23,7 @@ function safeNext(value) {
 export default function LoginForm() {
   const { t } = useLocale();
   const router = useRouter();
+  const { startNavigation } = useNavigationProgress();
   const searchParams = useSearchParams();
   const destination = safeNext(searchParams.get("next"));
 
@@ -53,6 +55,7 @@ export default function LoginForm() {
         return;
       }
 
+      startNavigation();
       router.replace(destination);
       router.refresh();
     } catch {

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { useLocale } from "@/app/_components/i18n/LocaleProvider";
+import { useNavigationProgress } from "@/app/_components/navigation/NavigationProgressProvider";
 
 const FIELD =
   "mt-1 block w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none transition focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 dark:focus:border-zinc-100 dark:focus:ring-zinc-100/10";
@@ -13,6 +14,7 @@ const LABEL = "block text-sm font-medium text-zinc-700 dark:text-zinc-300";
 export default function RegisterForm() {
   const { t } = useLocale();
   const router = useRouter();
+  const { startNavigation } = useNavigationProgress();
 
   const [status, setStatus] = useState("idle"); // idle | loading | error | success
   const [error, setError] = useState("");
@@ -53,6 +55,7 @@ export default function RegisterForm() {
       }
 
       setStatus("success");
+      startNavigation();
       router.replace("/dashboard");
       router.refresh();
     } catch {

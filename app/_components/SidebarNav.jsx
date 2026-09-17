@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 import LogoutButton from "@/app/_components/LogoutButton";
 import ImpersonationBanner from "@/app/_components/ImpersonationBanner";
 import MobileBottomNav from "@/app/_components/MobileBottomNav";
+import { isNavItemActive } from "@/app/_components/navActive";
 import ThemeToggle from "@/app/_components/theme/ThemeToggle";
 import LanguageSwitcher from "@/app/_components/i18n/LanguageSwitcher";
 import { useLocale } from "@/app/_components/i18n/LocaleProvider";
@@ -80,7 +81,13 @@ const ICONS = {
 // Order matters: MobileBottomNav takes the first few of these for its
 // permanent tabs — put the sections worth a thumb-reach slot first.
 function navItemsFor(role, t) {
-  const items = [{ href: "/dashboard", label: t("nav.dashboard"), icon: ICONS.dashboard }];
+  // `exact: true` — see app/_components/navActive.js's own comment: Dashboard's
+  // href is a path-prefix ancestor of every other item below, so it must
+  // never use the shared prefix-matching rule those items rely on for their
+  // own real sub-pages.
+  const items = [
+    { href: "/dashboard", label: t("nav.dashboard"), icon: ICONS.dashboard, exact: true },
+  ];
   if (role === "merchant" || role === "employee") {
     items.push({ href: "/dashboard/orders", label: t("nav.orders"), icon: ICONS.orders });
     items.push({ href: "/dashboard/commission", label: t("nav.commission"), icon: ICONS.commission });
@@ -118,8 +125,7 @@ function NavLinks({ items, pathname, onNavigate }) {
   return (
     <nav className="flex flex-col gap-1">
       {items.map((item) => {
-        const active =
-          pathname === item.href || pathname.startsWith(`${item.href}/`);
+        const active = isNavItemActive(pathname, item);
         return (
           <Link
             key={item.href}
@@ -361,7 +367,7 @@ export default function SidebarNav({ user, children }) {
         {children}
       </main>
 
-      <MobileBottomNav items={items} onOpenMore={() => setMobileOpen(true)} />
+      <MobileBottomNav items={items} pathname={pathname} onOpenMore={() => setMobileOpen(true)} />
     </div>
   );
 }

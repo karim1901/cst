@@ -94,6 +94,12 @@ export default function MonthlyOverview({ stats }) {
         <StatCard label={t("finance.adSpend")} value={money(totals.adSpend)} />
         <StatCard label={t("finance.productCosts")} value={money(totals.productCost)} />
         <StatCard label={t("finance.shippingCosts")} value={money(totals.shippingCost)} />
+        {/* Employee Commission — sourced from the same authoritative
+            Commission-page calculation (lib/commission/report.js), included
+            once in Total Costs below; see lib/finance/calculate.js's own
+            comment. Month-level figure only (see that module's comment for
+            why it has no daily breakdown). */}
+        <StatCard label={t("finance.employeeCommission")} value={money(totals.employeeCommission)} />
         <StatCard label={t("finance.otherExpenses")} value={money(totals.otherExpense)} />
         <StatCard label={t("finance.totalCosts")} value={money(totals.totalCost)} tone="red" />
       </section>

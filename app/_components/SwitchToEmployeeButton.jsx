@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { useNavigationProgress } from "@/app/_components/navigation/NavigationProgressProvider";
+
 /**
  * "Switch to employee" — calls POST /api/auth/impersonate, which validates
  * ownership server-side and swaps the session cookie for a real employee
@@ -12,6 +14,7 @@ import { useRouter } from "next/navigation";
  */
 export default function SwitchToEmployeeButton({ employeeId }) {
   const router = useRouter();
+  const { startNavigation } = useNavigationProgress();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -30,6 +33,7 @@ export default function SwitchToEmployeeButton({ employeeId }) {
         setLoading(false);
         return;
       }
+      startNavigation();
       router.push("/dashboard");
       router.refresh();
     } catch {

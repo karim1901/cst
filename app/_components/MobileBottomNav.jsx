@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 
 import { useLocale } from "@/app/_components/i18n/LocaleProvider";
+import { isNavItemActive } from "@/app/_components/navActive";
 
 /**
  * Bottom tab bar for the primary sections, mobile only — the pattern a real
@@ -12,10 +12,16 @@ import { useLocale } from "@/app/_components/i18n/LocaleProvider";
  * role-aware list SidebarNav already builds (`navItemsFor`); this only
  * takes the first few (the ones worth a permanent thumb-reach slot) plus a
  * "More" entry that opens the existing drawer for everything else.
+ *
+ * `pathname` is passed down from SidebarNav (its own single `usePathname()`
+ * call) rather than this component calling `usePathname()` a second,
+ * independent time — a defensive consolidation to ONE source of truth for
+ * "what is the current route" across every nav surface (desktop sidebar,
+ * mobile drawer, this bottom bar), so the three can never compute active
+ * state from a different pathname reading within the same render pass.
  */
-export default function MobileBottomNav({ items, onOpenMore }) {
+export default function MobileBottomNav({ items, pathname, onOpenMore }) {
   const { t } = useLocale();
-  const pathname = usePathname();
   const primary = items.slice(0, 3);
   const hasMore = items.length > primary.length;
   const columns = hasMore ? primary.length + 1 : primary.length;
@@ -28,7 +34,7 @@ export default function MobileBottomNav({ items, onOpenMore }) {
       <div className="grid" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
 
         {primary.map((item) => {
-          const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+          const active = isNavItemActive(pathname, item);
           return (
             <Link
               key={item.href}

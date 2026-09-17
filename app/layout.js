@@ -5,6 +5,8 @@ import "./globals.css";
 import { ThemeProvider } from "@/app/_components/theme/ThemeProvider";
 import { LocaleProvider } from "@/app/_components/i18n/LocaleProvider";
 import ServiceWorkerUpdateReload from "@/app/_components/pwa/ServiceWorkerUpdateReload";
+import { NavigationProgressProvider } from "@/app/_components/navigation/NavigationProgressProvider";
+import NavigationProgressBar from "@/app/_components/navigation/NavigationProgressBar";
 import {
   LOCALE_COOKIE,
   THEME_COOKIE,
@@ -83,9 +85,18 @@ export default async function RootLayout({ children }) {
     >
       <body className="min-h-full flex flex-col">
         <ServiceWorkerUpdateReload />
-        <ThemeProvider initialTheme={theme ?? "light"}>
-          <LocaleProvider initialLocale={locale}>{children}</LocaleProvider>
-        </ThemeProvider>
+        {/* Mounted ONCE, above ThemeProvider/LocaleProvider, so it survives
+            every route change untouched (never unmounted/remounted by the
+            navigation it is itself tracking) — see
+            NavigationProgressProvider.jsx's own comment. */}
+        <NavigationProgressProvider>
+          <ThemeProvider initialTheme={theme ?? "light"}>
+            <LocaleProvider initialLocale={locale}>
+              <NavigationProgressBar />
+              {children}
+            </LocaleProvider>
+          </ThemeProvider>
+        </NavigationProgressProvider>
       </body>
     </html>
   );

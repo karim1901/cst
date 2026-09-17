@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { useNavigationProgress } from "@/app/_components/navigation/NavigationProgressProvider";
+
 /**
  * Shown only while a merchant is viewing the app as one of their employees
  * (`user.impersonatorId` set — see app/api/auth/impersonate/route.js).
@@ -12,6 +14,7 @@ import { useRouter } from "next/navigation";
  */
 export default function ImpersonationBanner({ employeeName }) {
   const router = useRouter();
+  const { startNavigation } = useNavigationProgress();
   const [loading, setLoading] = useState(false);
 
   async function handleReturn() {
@@ -21,6 +24,7 @@ export default function ImpersonationBanner({ employeeName }) {
     } catch {
       // ignore — refresh below reflects whatever the server actually did
     }
+    startNavigation();
     router.replace("/dashboard/employees");
     router.refresh();
   }

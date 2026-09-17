@@ -15,6 +15,7 @@ import {
   Spinner,
 } from "@/app/_components/ui/form";
 import { useLocale } from "@/app/_components/i18n/LocaleProvider";
+import { useNavigationProgress } from "@/app/_components/navigation/NavigationProgressProvider";
 
 function toNonNegativeInt(value) {
   if (value === "" || value === null || value === undefined) {
@@ -33,6 +34,7 @@ function toNonNegativeInt(value) {
  */
 export default function AddEmployeeForm() {
   const router = useRouter();
+  const { startNavigation } = useNavigationProgress();
   const { t } = useLocale();
 
   const [status, setStatus] = useState("idle"); // idle | loading | error
@@ -104,6 +106,7 @@ export default function AddEmployeeForm() {
         return;
       }
 
+      startNavigation();
       router.push("/dashboard/employees?created=1");
       router.refresh();
     } catch {

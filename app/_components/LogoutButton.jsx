@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { useLocale } from "@/app/_components/i18n/LocaleProvider";
+import { useNavigationProgress } from "@/app/_components/navigation/NavigationProgressProvider";
 
 const LOGOUT_ICON = (
   <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.75" className="h-4.5 w-4.5">
@@ -24,6 +25,7 @@ const LOGOUT_ICON = (
  */
 export default function LogoutButton({ compact = false }) {
   const router = useRouter();
+  const { startNavigation } = useNavigationProgress();
   const { t } = useLocale();
   const [loading, setLoading] = useState(false);
 
@@ -34,6 +36,7 @@ export default function LogoutButton({ compact = false }) {
     } catch {
       // ignore — we clear the client state regardless
     }
+    startNavigation();
     router.replace("/login");
     router.refresh();
   }
