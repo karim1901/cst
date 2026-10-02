@@ -202,37 +202,45 @@ const userSchema = new Schema(
       default: true,
     },
 
-    // ACTIVE — the authoritative live counter for Ozon Express tracking
-    // numbers. Was briefly superseded by the per-month TrackingCounter model
-    // (see models/TrackingCounter.js), then explicitly reverted back to
-    // this field as the source of truth for Ozon order creation and for the
-    // CURRENT month's listing — see lib/ozon/reserve-tracking-number.js and
-    // the README's "Ozon Express" section for the full history.
-    // NEXT-UNUSED semantics (the stored value IS the next order's number,
-    // unlike TrackingCounter's "latest used" convention); reserve/release
-    // only through lib/ozon/reserve-tracking-number.js, never by writing
-    // this field directly, or the concurrency-safety guarantees break.
-    // Deliberately does NOT reset monthly — it is a single continuous
-    // value; TrackingCounter documents from before this field was restored
-    // remain in the database (untouched) and are still used, read-only, for
-    // browsing PAST months' Ozon history.
+    // ACTIVE — the authoritative LIVE counter for Ozon Express tracking
+    // numbers, for the CURRENT calendar month only — NEXT-UNUSED semantics
+    // (the stored value IS the next order's number). Paired with
+    // `ozonTrackingCounterMonth` immediately below, which records WHICH
+    // month this value currently represents; see
+    // lib/ozon/reserve-tracking-number.js for the one mechanism that
+    // reserves/releases/resets it (never write either field directly
+    // elsewhere, or the concurrency-safety + auto-reset guarantees break).
+    // A PAST month's highest-used counter lives separately, read-only, in
+    // the per-period `TrackingCounter` model
+    // (models/TrackingCounter.js) — untouched by this field.
     ozonTrackingCounter: {
       type: String,
       select: false,
     },
-    // ACTIVE — the authoritative live counter for Quick Livraison tracking
-    // numbers, mirroring `ozonTrackingCounter` exactly (same NEXT-UNUSED
-    // semantics, same CAS reserve/release mechanism — see
-    // lib/quick/reserve-tracking-number.js). Stored as a genuine Number
-    // (unlike `ozonTrackingCounter`, which stores its string form for
-    // historical reasons — see that field's own comment; Ozon's own
-    // behavior is deliberately left untouched) so `typeof` and Mongo
-    // queries/aggregations on this field behave as expected.
-    // Deliberately does NOT reset monthly — a single continuous value,
-    // same as Ozon's. The per-period `TrackingCounter` model remains the
-    // source for PAST months' Quick history — see
-    // lib/quick/reserve-tracking-number.js#peekQuickCounterForPeriod —
-    // untouched by this field's reserve/release.
+    // "YYYYMM" — which calendar month `ozonTrackingCounter` above currently
+    // represents, in the explicit Morocco business timezone
+    // (lib/tracking/counter.js#businessPeriodFor). The whole automatic
+    // monthly-reset mechanism hinges on this one comparison: a reservation
+    // whose OWN freshly-computed business period does not match what is
+    // stored here means "this employee has not created an Ozon order yet
+    // this month" — the counter resets to 1000 and this field is updated
+    // to the new period, atomically, as part of that same reservation.
+    // `undefined`/missing (a brand-new employee, or one who predates this
+    // field) is treated exactly like "a different month" — always resets,
+    // never crashes, never requires a manual migration step.
+    ozonTrackingCounterMonth: {
+      type: String,
+      match: [/^\d{6}$/, "ozonTrackingCounterMonth must be in YYYYMM form."],
+      select: false,
+    },
+    // ACTIVE — the authoritative LIVE counter for Quick Livraison tracking
+    // numbers, DELIBERATELY a different design from Ozon's above: a single,
+    // continuously-incrementing value that never resets monthly — Quick's
+    // own established architecture, explicitly UNCHANGED by the Ozon-only
+    // monthly-reset business rule (see lib/quick/reserve-tracking-number.js
+    // and lib/ozon/reserve-tracking-number.js's own comments for why the
+    // two providers are deliberately NOT symmetric here). No companion
+    // "month" field — there is nothing to compare against.
     quickTrackingCounter: {
       type: Number,
       min: [0, "quickTrackingCounter cannot be negative."],

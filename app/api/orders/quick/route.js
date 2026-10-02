@@ -419,10 +419,11 @@ export async function POST(request) {
 
   const prefix = quickTrackingPrefixFor(currentUser);
   // The period segment always reflects TODAY's real month — it is NOT
-  // stored alongside the counter (the live `quickTrackingCounter` is a
-  // single continuous value, decoupled from calendar months by design —
-  // see lib/quick/reserve-tracking-number.js — same as Ozon's own
-  // equivalent field).
+  // stored alongside the counter: `quickTrackingCounter` is a single
+  // continuous value, decoupled from calendar months by design (Quick's
+  // own, unchanged architecture — see lib/quick/reserve-tracking-number.js
+  // and lib/ozon/reserve-tracking-number.js's own comment for why Ozon and
+  // Quick are deliberately NOT symmetric here).
   const fullTrackingNumber = buildFullQuickTrackingNumber(prefix, periodFor(), reservation.trackingId);
   // Everything after the prefix — kept as its own value (not just the bare
   // counter) so `trackingNumber === prefix + numericTrackingNumber` always

@@ -5,25 +5,31 @@ import { SHIPPING_PROVIDER_VALUES } from "./ShippingCompany.js";
 const { Schema } = mongoose;
 
 /**
- * The monthly tracking-number counter for one (owner, provider, period).
+ * The monthly tracking-number counter for one (owner, provider, period) —
+ * HISTORICAL (PAST-MONTH) read-only storage only. The LIVE, current-month
+ * counter for each provider is NOT this model: Ozon's current month lives on
+ * `User.ozonTrackingCounter` + `User.ozonTrackingCounterMonth` (see
+ * lib/ozon/reserve-tracking-number.js), and Quick's own live counter is the
+ * single, continuously-incrementing `User.quickTrackingCounter` (see
+ * lib/quick/reserve-tracking-number.js) — deliberately NOT month-scoped at
+ * all, unlike Ozon.
  *
  * `owner` is a merchant or an employee (see lib/tracking/counter.js —
- * whoever `lib/tracking/reserve-counter.js` reserves a number for). Each
- * owner has a COMPLETELY INDEPENDENT counter per shipping provider, and a
- * fresh one every calendar month — this is the whole point of this model
- * existing separately from a single scalar field: `models/User.js` used to
- * hold one continuous, never-resetting counter per provider
- * (`ozonTrackingCounter` / `quickTrackingCounter`, still there, now
- * dormant/historical — see its comment) before the monthly-reset business
- * rule was introduced. Those old fields are deliberately left untouched
- * (existing counters/orders are never migrated or reset).
+ * whoever `lib/tracking/reserve-counter.js` reserves a number for). This
+ * model exists purely so a PAST month's highest-used counter stays
+ * queryable for display (`peekOzonCounterForPeriod` /
+ * `peekQuickCounterForPeriod`) after the live per-provider mechanism has
+ * already moved on to later months — it is never read or written by order
+ * creation itself, for either provider; see
+ * scripts/repair-tracking-counters.mjs for how historical documents here get
+ * backfilled/repaired from real `Order` data.
  *
  * `counter` holds the LATEST successfully used number for this
- * (owner, provider, period) — NOT the next-unused one (a deliberate
- * convention flip from the old per-provider field): the very first order of
- * a month uses 1000, and the document is only created once that first
- * order actually succeeds. Reading "no document" therefore means
- * "no orders yet this month" — see lib/tracking/reserve-counter.js.
+ * (owner, provider, period) — NOT the next-unused one (the opposite
+ * convention from the live `User.*TrackingCounter` fields): the very first
+ * order of a month uses 1000, and the document is only created once that
+ * first order actually succeeds. Reading "no document" therefore means
+ * "no orders that month" — see lib/tracking/reserve-counter.js.
  */
 const trackingCounterSchema = new Schema(
   {

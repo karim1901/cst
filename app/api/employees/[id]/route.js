@@ -5,6 +5,7 @@ import User, { USER_ROLES } from "@/models/User";
 import { employeeUpdateSchema, fieldErrorsOf } from "@/lib/validation/auth";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { toEmployeeSummary } from "@/lib/employees";
+import { peekNextOzonCounter, forceSetNextOzonCounter } from "@/lib/ozon/reserve-tracking-number";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,9 +24,7 @@ async function loadOwnedEmployee(id, merchantId) {
   if (!id || typeof id !== "string" || !/^[0-9a-fA-F]{24}$/.test(id)) {
     return null;
   }
-  return User.findOne({ _id: id, merchantId, role: USER_ROLES.EMPLOYEE }).select(
-    "+ozonTrackingCounter"
-  );
+  return User.findOne({ _id: id, merchantId, role: USER_ROLES.EMPLOYEE });
 }
 
 async function requireMerchant() {
@@ -41,7 +40,13 @@ async function requireMerchant() {
   return { currentUser };
 }
 
-/** One employee's full editable data, including the real `ozonTrackingCounter` value. */
+/**
+ * One employee's full editable data, including the real CURRENT-MONTH Ozon
+ * counter value — read from the month-scoped `TrackingCounter` model (see
+ * lib/ozon/reserve-tracking-number.js's own comment for the October-
+ * rollover fix this is part of), never the old, now-dormant
+ * `User.ozonTrackingCounter` field.
+ */
 export async function GET(request, { params }) {
   const { currentUser, error } = await requireMerchant();
   if (error) return error;
@@ -57,7 +62,7 @@ export async function GET(request, { params }) {
   return NextResponse.json({
     employee: {
       ...toEmployeeSummary(employee),
-      ozonTrackingCounter: employee.ozonTrackingCounter ?? null,
+      ozonTrackingCounter: await peekNextOzonCounter(employee._id),
     },
   });
 }
@@ -107,14 +112,6 @@ export async function PATCH(request, { params }) {
   if (password !== undefined) employee.password = password; // re-hashed by pre('save')
   if (commission !== undefined) employee.commission = commission;
   if (quickLivraisonApiKey !== undefined) employee.quickLivraisonApiKey = quickLivraisonApiKey;
-  // Administrative override of the live, authoritative counter — see
-  // lib/ozon/reserve-tracking-number.js. Writing it directly here (rather
-  // than through reserveNextOzonTrackingNumber's CAS loop) is intentional:
-  // this is a merchant correcting the value, not reserving one for an
-  // order. It stays the one and only counter field either way.
-  if (ozonTrackingCounter !== undefined) {
-    employee.ozonTrackingCounter = String(ozonTrackingCounter);
-  }
 
   try {
     await employee.save();
@@ -145,10 +142,22 @@ export async function PATCH(request, { params }) {
     throw err;
   }
 
+  // Administrative override of the CURRENT month's counter — a SEPARATE
+  // write, after the main document save succeeds, to the month-scoped
+  // `TrackingCounter` document (see lib/ozon/reserve-tracking-number.js's
+  // own comment for the full October-rollover-fix rationale). Unconditional
+  // (no CAS): this is a merchant explicitly correcting the value, not
+  // reserving one for an order, and only ever touches THIS month's own
+  // document — it can never affect a past month's already-finalized
+  // historical counter or a future month's.
+  if (ozonTrackingCounter !== undefined) {
+    await forceSetNextOzonCounter(employee._id, ozonTrackingCounter);
+  }
+
   return NextResponse.json({
     employee: {
       ...toEmployeeSummary(employee),
-      ozonTrackingCounter: employee.ozonTrackingCounter ?? null,
+      ozonTrackingCounter: await peekNextOzonCounter(employee._id),
     },
   });
 }

@@ -18,7 +18,7 @@ import {
   peekOzonCounterForPeriod,
 } from "@/lib/ozon/reserve-tracking-number";
 import { ozonTrackingPrefixFor, buildFullOzonTrackingNumber } from "@/lib/ozon/tracking-number";
-import { periodFor, isValidPeriod } from "@/lib/tracking/counter";
+import { businessPeriodFor, isValidPeriod } from "@/lib/tracking/counter";
 import { resolveDisplayStatus, getLivreurDisplayPhone, findDeliveredAt } from "@/lib/ozon/history";
 import { syncOrderStatus } from "@/lib/commission/sync-status";
 import { matchesStatusFilter, ORDER_STATUS_FILTER_VALUES } from "@/lib/orders/status-groups";
@@ -186,8 +186,13 @@ export async function GET(request) {
 
   const searchParams = new URL(request.url).searchParams;
   const requestedPeriod = searchParams.get("period");
-  const period = isValidPeriod(requestedPeriod) ? requestedPeriod : periodFor();
-  const isCurrentMonth = period === periodFor();
+  // Morocco business time — matches what `peekNextOzonCounter` itself uses
+  // internally to decide "is this the live/current month" (see
+  // lib/ozon/reserve-tracking-number.js), so this listing can never disagree
+  // with the live counter about which period is current right at a month
+  // boundary.
+  const period = isValidPeriod(requestedPeriod) ? requestedPeriod : businessPeriodFor();
+  const isCurrentMonth = period === businessPeriodFor();
 
   const { actor, error: actorError } = await resolveListingActor(
     currentUser,
@@ -321,11 +326,14 @@ export async function POST(request) {
   }
 
   const prefix = ozonTrackingPrefixFor(currentUser);
-  // The period segment always reflects TODAY's real month — it is NOT
-  // stored alongside the counter (unlike Quick's per-month scheme): the
-  // live `ozonTrackingCounter` is a single continuous value, decoupled from
-  // calendar months by design (see lib/ozon/reserve-tracking-number.js).
-  const fullTrackingNumber = buildFullOzonTrackingNumber(prefix, periodFor(), reservation.trackingId);
+  // Use the EXACT period the reservation was made against — never a second,
+  // independently-computed `businessPeriodFor()` here, which could
+  // theoretically disagree with the reservation if this request happened to
+  // straddle a real calendar-month boundary mid-flight (see
+  // lib/ozon/reserve-tracking-number.js's own comment on why `period` is
+  // returned from the reservation itself now that the counter is
+  // month-scoped).
+  const fullTrackingNumber = buildFullOzonTrackingNumber(prefix, reservation.period, reservation.trackingId);
   // Everything after the prefix — kept as its own value (not just the bare
   // counter) so `trackingNumber === prefix + numericTrackingNumber` always
   // holds, the same invariant models/Order.js documents.
