@@ -6,6 +6,7 @@ import ProviderTabs from "@/app/_components/orders/ProviderTabs";
 import MonthSelect from "@/app/_components/orders/MonthSelect";
 import { Spinner, ErrorBanner } from "@/app/_components/orders/shared";
 import { useBackgroundProviderSync } from "@/app/_components/shared/useBackgroundProviderSync";
+import { usePeriodSync } from "@/app/_components/shared/usePeriodSync";
 import { useLocale } from "@/app/_components/i18n/LocaleProvider";
 import { SHIPPING_PROVIDERS } from "@/lib/shipping/providers";
 import { periodFor } from "@/lib/tracking/counter";
@@ -84,12 +85,30 @@ export default function FinancePageClient() {
     setRenderedForFetchKey(""); // force the effect above to re-run
   }
 
+  // Root-cause fix (see lib/sync/period-sync.js's own comment): the
+  // background trigger above only ever covers the CURRENT month, once per
+  // page mount — it never follows the merchant to whichever historical
+  // month they actually select here, and never re-checks again while the
+  // page stays open with nothing changed. `usePeriodSync`
+  // (app/_components/shared/usePeriodSync.js, shared with
+  // OrdersBrowser.jsx) targets the EXACT selected (provider, period)
+  // instead, with no month-age limit, and keeps re-checking it for as long
+  // as this exact selection stays active and the tab is visible — not just
+  // once on mount/change.
+  const { checking: checkingUpdates } = usePeriodSync({ provider, period, onChanged: refetch });
+
   return (
     <div>
       <header className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
           {t("finance.title")}
         </h1>
+        {checkingUpdates ? (
+          <p className="mt-1 flex items-center gap-1.5 text-xs text-zinc-400 dark:text-zinc-500">
+            <Spinner />
+            {t("finance.checkingForUpdates")}
+          </p>
+        ) : null}
       </header>
 
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">

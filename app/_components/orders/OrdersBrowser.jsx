@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import DbOrderCard from "@/app/_components/orders/DbOrderCard";
 import { Spinner, ErrorBanner } from "@/app/_components/orders/shared";
+import { usePeriodSync } from "@/app/_components/shared/usePeriodSync";
 import { useLocale } from "@/app/_components/i18n/LocaleProvider";
 import { isReturnStatus, ORDER_STATUS_FILTERS } from "@/lib/orders/status-groups";
 
@@ -47,6 +48,10 @@ export default function OrdersBrowser({ provider, employeeId, period, status = "
     setClientPage(1);
   }
 
+  // Bumped by `refetch()` (below) to force the load effect to re-run without
+  // the fetch scope itself changing — see the sync hook's own comment.
+  const [refreshToken, setRefreshToken] = useState(0);
+
   useEffect(() => {
     const controller = new AbortController();
 
@@ -84,7 +89,23 @@ export default function OrdersBrowser({ provider, employeeId, period, status = "
 
     loadAll();
     return () => controller.abort();
-  }, [provider, employeeId, period, t]);
+  }, [provider, employeeId, period, refreshToken, t]);
+
+  function refetch() {
+    setRefreshToken((n) => n + 1);
+  }
+
+  // Root-cause fix (see lib/sync/period-sync.js's own comment): this view
+  // reads the local DB mirror directly, which previously only ever got
+  // refreshed by the current-month-only page-view trigger or the once-daily
+  // cron's 3-month lookback. `usePeriodSync` (shared with
+  // FinancePageClient.jsx) targets the EXACT selected (provider, period)
+  // instead, with no month-age limit, and re-fetches this view's data
+  // whenever a sync round actually found something to check. `employeeId`
+  // is always `null` here (this is the "all employees" scope — see the
+  // caller) — the sync itself already covers every actor for this
+  // merchant+provider+period regardless.
+  usePeriodSync({ provider, period, onChanged: refetch });
 
   // Local status classification — mirrors the server's canonical rule
   // (GET /api/orders): "Livré" = `deliveredAt` set; "Retour" = a
