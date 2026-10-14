@@ -54,12 +54,32 @@ export default function FinancePageClient() {
   const [stats, setStats] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
 
+  // ROOT-CAUSE FIX ("stuck on Loading… after data is already displayed"):
+  // `refetch()` used to reset `renderedForFetchKey` to force a refetch, but
+  // the fetch effect below only ever depended on `[provider, period]` — a
+  // same-scope refetch (triggered by a background sync finding a real
+  // change, or by saving an ad-spend/product-cost/other-expense/shipping-
+  // price entry elsewhere on this page) flipped `state` to "loading" via the
+  // block below, yet NEVER re-ran the effect that could flip it back to
+  // "ready", since neither `provider` nor `period` had actually changed.
+  // The indicator was then stuck forever even though `stats` still held
+  // perfectly good data.
+  //
+  // Fixed by separating the two concerns `renderedForFetchKey` was
+  // conflating: `fetchKey` (below) detects a genuine SCOPE change
+  // (provider/month) — the only case that should show the full loading
+  // view, since there is genuinely no usable data yet for a brand-new
+  // scope — while `refreshToken` is what the fetch effect ACTUALLY depends
+  // on to know when to run again, for either reason.
   const fetchKey = `${provider}|${period}`;
   const [renderedForFetchKey, setRenderedForFetchKey] = useState(fetchKey);
-  if (fetchKey !== renderedForFetchKey) {
+  const isScopeChange = fetchKey !== renderedForFetchKey;
+  if (isScopeChange) {
     setRenderedForFetchKey(fetchKey);
     setState("loading");
   }
+
+  const [refreshToken, setRefreshToken] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -75,14 +95,25 @@ export default function FinancePageClient() {
       })
       .catch((error) => {
         if (error?.name === "AbortError") return;
+        // A background refresh failing must never blow away already-good
+        // data or get the user stuck — only show the error view when there
+        // is genuinely no usable data yet (item 3: "retain the last valid
+        // financial data" / "a failed statistics refresh does not cause an
+        // infinite loading state").
         setErrorMessage(error?.message || "Could not load financial statistics.");
-        setState("error");
+        setState((prev) => (prev === "ready" ? prev : "error"));
       });
     return () => controller.abort();
-  }, [provider, period]);
+  }, [provider, period, refreshToken]);
 
+  // Triggers a refetch of the SAME scope without ever showing the full
+  // loading view — already-rendered figures stay on screen the whole time,
+  // matching every other "onChanged" caller on this page (saving an
+  // expense, a background sync finding a real change) and item 2's own
+  // "do not activate the primary loading state just because synchronization
+  // is running" requirement.
   function refetch() {
-    setRenderedForFetchKey(""); // force the effect above to re-run
+    setRefreshToken((n) => n + 1);
   }
 
   // Root-cause fix (see lib/sync/period-sync.js's own comment): the
